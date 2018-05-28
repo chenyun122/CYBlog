@@ -124,7 +124,14 @@
 * * *
 
 ### 三. 利用OpenCV进行模板匹配(Template Matching)
-  OpenCV进行模版匹配的工作主要是我们传给它一张大图，一张小的模板图，然后它在大图中找到模板图片的内容，并给出匹配到的位置。对于视频的每一帧图片，我们都需要进行一次匹配，来看看视频中是否存在要找的物体。我们建立一个类来专门负责匹配工作，向项目添加一个继承自`NSObject`的Cocoa Touch Class,命名为`TemplateMatch`。由于需要以C++方式调用OpenCV的相关函数，所以将.m文件的扩展重命名为.mm来进行Objective C++编码。
+  OpenCV进行模版匹配的工作主要是我们传给它一张大图，一张小的模板图，然后它在大图中找到模板图片的内容，并给出匹配到的位置。对于视频的每一帧图片，我们都需要进行一次匹配，确定视频中是否存在要找的物体。我们建立一个类来专门负责这些匹配工作，向项目添加一个继承自`NSObject`的Cocoa Touch Class,命名为`TemplateMatch`。它与其他类的交互如下：
+  
+
+<p align="center" >
+  <img src="http://p9f3h0583.bkt.clouddn.com/tp.png" alt="template matching" title="template matching" />
+</p>
+
+  由于需要以C++方式调用OpenCV的相关函数，所以将.m文件的扩展重命名为.mm来进行Objective C++编码。
   
 #### 1.模板匹配类头文件
 头文件很简单，就是用于设置模板图片，和提供模板匹配的方法：
@@ -143,10 +150,44 @@
 
 @end
 ```
-由于视频由不同的帧组成，而模板图片则固定不变。所以我们提供一个属性来设置模板图片，一次设置完成即可。而匹配行为则由一个方法实现，提供给外部多次调用。
+由于视频由不同的帧组成，而模板图片则固定不变。所以我们提供一个属性来设置模板图片，一次设置即可。而匹配行为则由一个方法实现，提供给外部多次调用。
 
-#### 1.模板匹配类实现
+#### 2.模板匹配类实现
+##### 2.1首先是模板图片属性的实现。
+模板图片属性的设置并不是存储一张图片那么简单。OpenCV的模板匹配功能有个缺陷，就是如果模板图片和大图的比例相差太大，则无法匹配到。比如我们要在1000\*1000像素的图片中，查找大概100\*100像素大小的物体，但提供的模版图片只有30\*30，那么匹配到的概率会大大降低。所以我们需要缩放模板图片来提高匹配概率。这里我们使用C++标准库容器来存放各个缩放等级的模板图片,和平方函数来计算各个等级缩放比例。类实现部分的开头如下：
 
+```
+#import "TemplateMatch.h"
+#include <vector>
+#include <math.h>
+
+using namespace cv;
+using namespace std;
+
+@interface TemplateMatch() {
+    UIImage *_templateImage;
+    vector<Mat> _scaledTempls; //各个缩放等级的模板图片矩阵
+}
+
+@end
+```
+
+在类实现的开头部分我们定义一些常量，以便集中调整计算参数：
+```
+@implementation TemplateMatch
+
+static const float resizeRatio = 0.35;     //原图缩放比例，越小性能越好，但识别度越低
+static const int maxTryTimes = 4;          //未达到预定识别度时，再尝试的次数限制
+static const float acceptableValue = 0.7;  //达到此识别度才被认为正确
+static const float scaleRation = 0.75;     //当模板未被识别时，尝试放大/缩小模板。 指定每次模板缩小的比例
+
+//......
+
+@end
+```
+
+
+模板图片的设置方法如下：
 
 * * *
 
