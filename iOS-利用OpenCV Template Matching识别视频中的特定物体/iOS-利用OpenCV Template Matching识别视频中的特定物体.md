@@ -353,7 +353,7 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
 }
 ```
 #### 3. 回到ViewController
-  在TemplateMatch类完成后，我们就可以回到ViewController进行调用了。先是引入头文件、声明对象、初始化等等，如下代码(只列出了增加的代码)：
+  在TemplateMatch类完成后，我们就可以回到ViewController进行调用了。先是引入TemplateMatch类头文件、声明对象、初始化等等，然后将模板图片赋给它。 模板图片也是从事先拍好的照片中截取出来的。代码如下(只列出了增加的代码)：
 ```
 //......
 #import "TemplateMatch.h"
