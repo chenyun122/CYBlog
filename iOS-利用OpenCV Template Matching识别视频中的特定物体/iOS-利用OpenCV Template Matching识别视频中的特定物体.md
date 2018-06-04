@@ -146,7 +146,7 @@
 @property(nonatomic,strong) UIImage *templateImage;     //模板图片。由于匹配方法会被多次调用，所以模板图片适合单次设定。
 
 //在Buffer中匹配预设的模板，如果成功则返回位置以及区域大小。
-//这里返回的Rect基于AVCapture Metadata的坐标系统，即值在0.0-0.1之间，方便AVCaptureVideoPreviewLayer类进行转换。
+//这里返回的Rect基于AVCapture Metadata的坐标系统，即值在0.0-1.0之间，方便AVCaptureVideoPreviewLayer类进行转换。
 - (CGRect)matchWithSampleBuffer:(CMSampleBufferRef)sampleBuffer;
 
 @end
@@ -406,7 +406,7 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
 再定义绘制方法：
 ```
 // 绘制标识框
-- (void)drawRectangleAtPoint:(CGRect)rect {
+- (void)drawRectangle:(CGRect)rect {
     if (rectangleLayer == nil) {
         rectangleLayer = [CALayer layer];
         rectangleLayer.frame = CGRectMake(0, 0, templateMatch.templateImage.size.width, templateMatch.templateImage.size.height);
@@ -424,13 +424,13 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
     rectangleLayer.hidden = YES;
 }
 ```
-  终于到了世界的尽头，我们再完善下视频捕获代理方法。由于视频的尺寸和屏幕宽高比不一定一致, 再加上点坐标对应的是横屏方式，所以绘制红框时需要进行坐标转换。辛运的是AVFoundation已提供现有方法`rectForMetadataOutputRectOfInterest`来转换：
+  终于到了世界的尽头，我们再完善下视频捕获代理方法。由于视频的尺寸和屏幕宽高比不一定一致, 再加上点坐标对应的是横屏方式，所以绘制红框时需要进行坐标转换。幸运的是AVFoundation已提供现有方法`rectForMetadataOutputRectOfInterest`来转换：
 ```
 - (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
     CGRect rect = [templateMatch matchWithSampleBuffer:sampleBuffer]; //将buffer提交给OpenCV进行模板匹配
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!CGRectEqualToRect(rect,CGRectZero)) { //匹配成功，则绘制标识框
-            [self drawRectangleAtPoint:[self.videoPreviewLayer rectForMetadataOutputRectOfInterest:rect]]; //由于视频的尺寸和屏幕宽高比不一定一致，所以对于视频中的一个点坐标，需要转换到屏幕的对应位置中。
+            [self drawRectangle:[self.videoPreviewLayer rectForMetadataOutputRectOfInterest:rect]]; //由于视频的尺寸和屏幕宽高比不一定一致，所以对于视频中的一个点坐标，需要转换到屏幕的对应位置中。
         }
         else{ //未匹配到，则隐藏标识框
             [self hideRectangle];
