@@ -1,4 +1,4 @@
-> 本文介绍了Flutter中多线程和异步任务的实践。首先简要说明了Isolate, Future, async 和 await等概念。然后根据不同场合，给出了轻量异步任务、重量任务建Isolate、线程间通讯、Flutter Computer方法、FutureGroup方法等的代码实现。
+> 本文介绍了Flutter中多线程和异步任务的实践。首先简要说明了Isolate, Future, async 和 await等概念。然后根据不同场合，给出了轻量异步任务、重量级任务建Isolate、线程间通讯、Flutter Computer方法、FutureGroup方法等的代码实现。
 
 ## 前言  
 [Flutter](https://flutter.dev/) 作为谷歌推出的跨平台UI开发工具包，为用户创建基于本地编译的移动、Web和桌面应用提供了统一的代码库。它具备热重载能力来提高开发效率，拥有富有表现力和灵活性的用户界面，以及媲美本地原生应用的执行性能(60帧)，这些让它对多端开发者来说是很具有吸引力的。笔者已肤浅地认为它是超越 Reative Native 的存在😄。  
@@ -53,7 +53,7 @@ SchedulerBinding.instance.scheduleTask<String>( () {
 - **idle**: 在没有动画，以及其他更高优先级任务在执行时，它才执行。最低优先级。
 
 
-## 重量任务，创建 Isolate (类似线程)
+## 重量级任务，创建 Isolate (类似线程)
 耗时计算的重量任务，我们创建新的Isolate去执行。使用Isolate需导入`dart:isolate`库。
 #### 一个极简的创建线程例子
 ```Dart
@@ -153,8 +153,8 @@ void threadTask(SendPort port) async {
 /*代码出处: https://blog.happyyun.com/ 感谢保留！*/
 ```
 输出：
-> Job's requested, time:2019-05-25 10:49:33.158430
-> Job1's done, time:2019-05-25 10:49:38.387428
+> Job's requested, time:2019-05-25 10:49:33.158430  
+> Job1's done, time:2019-05-25 10:49:38.387428  
 > Job2's done, time:2019-05-25 10:49:43.396201
 
 从输出看出，主线程发起子线程后不等待。在主子线程发消息协同中，Job1 和 Job2 被依次完成。
@@ -188,7 +188,7 @@ Future<List<Photo>> fetchPhotos(url) async {
     return parsePhotos(response.body);
 }
 
-//解析模型，重量计算
+//解析模型，耗时计算
 List<Photo> parsePhotos(String responseBody) {
     final parsed = json.decode(responseBody).cast<Map<String, dynamic>>();
 
@@ -222,4 +222,44 @@ class Photo {
 以上例子中，我们通过`compute`方法创建isolate，在isolate中获取json数据，并解析。最后以Future对象返回，主线程获得数据模型对象列表。此例子基于官方文档稍加改动，官方完整版：[《Parsing JSON in the background》](https://flutter.dev/docs/cookbook/networking/background-parsing)。
 
 ### FutureGroup
+在多线程编程中，多个任务完成后，再进行某个处理这种情况也比较多。iOS 的GCD就提供了Group方法应对这种操作。Flutter 库也提供了 [FutureGroup](https://api.flutter.dev/flutter/package-async_async/FutureGroup-class.html) 方法应对同样的情况。代码举例：
+```Dart
+import 'dart:math';
+import 'dart:async';
+import 'package:async/async.dart';
+import 'package:flutter/foundation.dart';
 
+void main() {
+  FutureGroup group = FutureGroup(); 
+
+  group.add(compute(threadTask, "Job1"));  //新建Isolate执行Job1, 并加入Group
+  group.add(compute(threadTask, "Job2"));
+  group.add(asyncTask("Job3")); //将一个本线程执行的异步任务加入Group
+
+  group.close(); //加入完毕
+
+  //在所有任务执行完毕后，得到通知
+  group.future.then((value) => print("All jobs are done, time: ${DateTime.now()}")).catchError((error)=>print("Group closed with some error $error"));
+}
+
+//线程中执行的任务
+void threadTask(String message) async {
+  await Future.delayed(Duration(seconds:Random().nextInt(5)));
+  print("$message's done, time: ${DateTime.now()}");
+}
+
+//同线程执行的异步任务
+Future<void> asyncTask(String message) async {
+  await Future.delayed(Duration(seconds: 3));
+  print("$message's done. time: ${DateTime.now()}");
+}
+```
+输出：
+> Job2's done, time: 2019-05-25 22:43:06.492572  
+> Job1's done, time: 2019-05-25 22:43:07.369564  
+> Job3's done. time: 2019-05-25 22:43:09.035682  
+> All jobs are done
+
+从输出看出，3项工作不分先后完成，Group得到了通知，以便进行下一步处理。
+
+## 总结
