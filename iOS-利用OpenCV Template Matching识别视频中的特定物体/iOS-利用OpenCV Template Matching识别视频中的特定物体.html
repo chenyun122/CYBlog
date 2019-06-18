@@ -1,26 +1,45 @@
 <p>  在视频或计算机视觉方面的应用中，有时需要识别视频中的特定物体。比如科幻片《头号玩家》中，反派的无人机在寻找主角车辆时，通过匹配之前拍摄的车辆特征图片来识别，并追踪打击。在新的iOS版本中，可以利用CoreML+Vision根据训练好的模型来识别，但此文介绍的是利用OpenCV库的Template Matching来识别，以应付一些简单的场合。我们最终要实现的是在视频中识别苹果Logo（这个Logo是事先拍好的），效果如下动图所示：</p>
 
 <p align="center" >
-    <img src="http://p9f3h0583.bkt.clouddn.com/tp3.gif" alt="template matching" title="template matching" width="325px"/>
-  </p>
+  <img src="https://github.com/chenyun122/TemplateMatching/raw/master/Screenshots/tp3.gif?raw=true" alt="template matching" title="template matching" width="325px"/>
+</p>
 
-<p>  整个项目主要通过以下几个步骤实现：<br><strong>  一. 集成OpenCV最新的iOS版本Framework；<br>  二. 使用AVFoundation获取视频流；<br>  三. 利用OpenCV进行模版匹配(Template Matching)；<br>  四. 绘制矩形提示位置。</strong></p>
+<p>  整个项目主要通过以下几个步骤实现：<br />
+<strong>  一. 集成OpenCV最新的iOS版本Framework；<br />
+  二. 使用AVFoundation获取视频流；<br />
+  三. 利用OpenCV进行模版匹配(Template Matching)；<br />
+  四. 绘制矩形提示位置。</strong></p>
+
 <p>想直接看源码的同学可以访问Github中的<a href="https://github.com/chenyun122/TemplateMatching">项目源码</a>。下完源码记得手动下载OpenCV framework, 它太大了，无法直接放在项目中，老司机都懂，😂  。</p>
-<hr>
-<h3 id="-opencv-ios-framework">一. 集成OpenCV最新的iOS版本Framework</h3>
-<p>  先在Github上下载OpenCV的最新Release版本：<a href="https://github.com/opencv/opencv/releases">https://github.com/opencv/opencv/releases</a>。iOS请选择文件opencv-3.4.1-ios-framework.zip(版本号可能更新)并解压。然后新建一个名为TamplateMatching的新iOS项目，因为需要以C++方式调用OpenCV的函数，所以语言选择Objective-C更加方便一点。最后将解压好的opencv2.framework文件拖到项目中，选择“Copy items if needed”。由于OpenCV部分宏定义和OC的同名，容易冲突，需要在引入iOS库之前<code>#import &lt;opencv2/opencv.hpp&gt;</code>,所以建立PCH文件并在其顶部添加：</p>
-<pre><code>#ifdef __cplusplus
-#import &lt;opencv2/opencv.hpp&gt;
+
+<hr />
+
+<h3>一. 集成OpenCV最新的iOS版本Framework</h3>
+
+<p>  先在Github上下载OpenCV的最新Release版本：<a href="https://github.com/opencv/opencv/releases">https://github.com/opencv/opencv/releases</a>。iOS请选择文件opencv-3.4.1-ios-framework.zip(版本号可能更新)并解压。然后新建一个名为TamplateMatching的新iOS项目，因为需要以C++方式调用OpenCV的函数，所以语言选择Objective-C更加方便一点。最后将解压好的opencv2.framework文件拖到项目中，选择“Copy items if needed”。由于OpenCV部分宏定义和OC的同名，容易冲突，需要在引入iOS库之前<code>#import <opencv2/opencv.hpp></code>,所以建立PCH文件并在其顶部添加：</p>
+
+```cpp
+#ifdef __cplusplus
+#import <opencv2/opencv.hpp>
 #endif
-</code></pre><p>之后将项目编译通过，准备工作完成。</p>
-<hr>
-<h3 id="-avfoundation-">二. 使用AVFoundation获取视频流</h3>
-<p>  使用AVFoundation获取视频流的方法网上已有很多，这里只做简单实现。从系统层面看，我们获取视频数据主体的步骤为：1.摄像头捕获视频流；2.输入到系统；3.系统再输出到我们的类中处理。相关的类：先通过AVCaptureDevice类提供用于视频输入的设备，然后绑定到AVCaptureDeviceInput类来提供具体的输入。视频流捕获行为由AVCaptureSession类管理，将AVCaptureDeviceInput对象加入到AVCaptureSession对象中来为Session提供输入。最后由AVCaptureVideoDataOutput类来提供视频的输出，输出的数据就由我们的类来处理。<br>  在上面所建项目的ViewController中，我们直接进行视频拍摄处理。代码如：</p>
-<pre><code>#import &quot;ViewController.h&quot;
-#import &lt;AVFoundation/AVFoundation.h&gt;
+```
 
 
-@interface ViewController () &lt;AVCaptureVideoDataOutputSampleBufferDelegate&gt; {
+<p>之后将项目编译通过，准备工作完成。</p>
+
+<hr />
+
+<h3>二. 使用AVFoundation获取视频流</h3>
+
+<p>  使用AVFoundation获取视频流的方法网上已有很多，这里只做简单实现。从系统层面看，我们获取视频数据主体的步骤为：1.摄像头捕获视频流；2.输入到系统；3.系统再输出到我们的类中处理。相关的类：先通过AVCaptureDevice类提供用于视频输入的设备，然后绑定到AVCaptureDeviceInput类来提供具体的输入。视频流捕获行为由AVCaptureSession类管理，将AVCaptureDeviceInput对象加入到AVCaptureSession对象中来为Session提供输入。最后由AVCaptureVideoDataOutput类来提供视频的输出，输出的数据就由我们的类来处理。
+  在上面所建项目的ViewController中，我们直接进行视频拍摄处理。代码如下：</p>
+
+```cpp
+#import "ViewController.h"
+#import <AVFoundation/AVFoundation.h>
+
+
+@interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate> {
 }
 
 @property (nonatomic,strong) AVCaptureSession *captureSession;
@@ -49,8 +68,8 @@
             if (granted) {
                 [self setupCaptureSession];
             } else {
-                UIAlertController *alertController = [UIAlertController alertControllerWithTitle:@&quot;未授权拍摄视频&quot; message:@&quot;请前往系统设置开放授权&quot; preferredStyle:UIAlertControllerStyleAlert];
-                UIAlertAction *okAction = [UIAlertAction actionWithTitle:@&quot;好的&quot; style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {}];
+                UIAlertController *alertController = [UIAlertController alertControllerWithTitle:@"未授权拍摄视频" message:@"请前往系统设置开放授权" preferredStyle:UIAlertControllerStyleAlert];
+                UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"好的" style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {}];
                 [alertController addAction:okAction];
                 [self presentViewController:alertController animated:YES completion:nil];
             }
@@ -70,14 +89,14 @@
 
     // 添加输入设备
     NSError *error = nil;
-    AVCaptureDeviceInput* input = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:&amp;error];
+    AVCaptureDeviceInput* input = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:&error];
     [session addInput:input];
 
     // 添加输出
     self.videoOutput = [[AVCaptureVideoDataOutput alloc] init];
     //此项设置很重要，在我们处理视频帧图片，需要32BGRA格式。而系统默认的为JPEG格式，所以需要在此设置。
     [self.videoOutput setVideoSettings:@{(id)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA)}];
-    dispatch_queue_t queue = dispatch_queue_create(&quot;SampleBufferQueue&quot;, NULL);
+    dispatch_queue_t queue = dispatch_queue_create("SampleBufferQueue", NULL);
     [self.videoOutput setSampleBufferDelegate:self queue:queue];
     [session addOutput:self.videoOutput];
 
@@ -102,21 +121,31 @@
 }
 
 @end
-</code></pre><p>完成这一步，运行APP，授 摄像权限，便可以看到视频拍摄画面。
-  </p>
-<hr>
-<h3 id="-opencv-template-matching-">三. 利用OpenCV进行模板匹配(Template Matching)</h3>
-<p>  使用OpenCV进行模版匹配时，我们要传给它一张大图，一张小的模板图，然后它在大图中找到模板图片的位置。对于视频的每一帧，我们都需要进行一次匹配，确定视频中是否存在该物体。我们建立一个类来专门负责这些匹配工作，向项目添加一 继承自<code>NSObject</code>的Cocoa Touch Class,命名为<code>TemplateMatch</code> 它与其他类的交互如下：</p>
-<p align="center" >
-    <img src="http://p9f3h0583.bkt.clouddn.com/tp.png" alt="template matching" title="template matching" />
-  </p>
+```
 
+
+<p>完成这一步，运行APP，授予摄像权限，便可以看到视频拍摄画面。
+  </p>
+
+<hr />
+
+<h3>三. 利用OpenCV进行模板匹配(Template Matching)</h3>
+
+<p>  使用OpenCV进行模版匹配时，我们要传给它一张大图，一张小的模板图，然后它在大图中找到模板图片的位置。对于视频的每一帧，我们都需要进行一次匹配，确定视频中是否存在该物体。我们建立一个类来专门负责这些匹配工作，向项目添加一个继承自<code>NSObject</code>的Cocoa Touch Class,命名为<code>TemplateMatch</code>。它与其他类的交互如下：</p>
+
+<p align="center" >
+  <img src="https://github.com/chenyun122/TemplateMatching/blob/master/Screenshots/tp.png?raw=true" alt="template matching" title="template matching" />
 </p>
-<p>由于需要以C++方式调用OpenC的相关函数，所以将.m文件的扩 名重命名为.mm，来进行Objective C++编码。</p>
-<h4 id="1-">1. 模板匹配类头文件</h4>
-<p>头文件很简单，就是提供用于设置模板图片的属性， 执行匹配的方法：</p>
-<pre><code>#import &lt;UIKit/UIKit.h&gt;
-#import &lt;CoreMedia/CoreMedia.h&gt;
+
+<p>由于需要以C++方式调用OpenCV的相关函数，所以将.m文件的扩展名重命名为.mm，来进行Objective C++编码。</p>
+
+<h4>1. 模板匹配类头文件</h4>
+
+<p>头文件很简单，就是提供用于设置模板图片的属性，和执行匹配的方法：</p>
+
+```cpp
+#import <UIKit/UIKit.h>
+#import <CoreMedia/CoreMedia.h>
 
 
 @interface TemplateMatch : NSObject
@@ -124,28 +153,41 @@
 @property(nonatomic,strong) UIImage *templateImage;     //模板图片。由于匹配方法会被多次调用，所以模板图片适合单次设定。
 
 //在Buffer中匹配预设的模板，如果成功则返回位置以及区域大小。
-//这里返回的Rect基于AVCapture Metadata的坐标系统，即值在0.0-0.1之间，方便AVCaptureVideoPreviewLayer类进行转换。
+//这里返回的Rect基于AVCapture Metadata的坐标系统，即值在0.0-1.0之间，方便AVCaptureVideoPreviewLayer类进行转换。
 - (CGRect)matchWithSampleBuffer:(CMSampleBufferRef)sampleBuffer;
 
 @end
-</code></pre><p>  由于视 由不同的帧组成，而模板图片则固定不变。所以我们提供一个属性来设置模板图片，一次设完即可。而匹配行为则由一个方法实现提供给外部多次调用。</p>
-<h4 id="2-">2. 模板匹配类实现</h4>
-<h5 id="2-1-">2.1 准备工作</h5>
-<p>  OpenCV的模板匹配有个缺陷，就是如果模板图片和大图的比例相 太大，则无 匹配到。比如我们要在1000*1000像素的图片中，查 大概100*100像素大小的物体，但提供的模版图片只有30*30，那么匹配到的概率会大大降低。所以我们需要缩放模板图 来提高匹配概率。这里我们使用C++标准库容器来存放各个缩放等级的模板图片,以及用平方函数来计 各个等级缩 比例。类实现部分的开头如下：</p>
-<pre><code>#import &quot;TemplateMatch.h&quot;
-#include &lt;vector&gt;
-#include &lt;math.h&gt;
+```
+
+
+<p>  由于视频由不同的帧组成，而模板图片则固定不变。所以我们提供一个属性来设置模板图片，一次设完即可。而匹配行为则由一个方法实现，提供给外部多次调用。</p>
+
+<h4>2. 模板匹配类实现</h4>
+
+<h5>2.1 准备工作</h5>
+
+<p>  OpenCV的模板匹配有个缺陷，就是如果模板图片和大图的比例相差太大，则无法匹配到。比如我们要在1000*1000像素的图片中，查找大概100*100像素大小的物体，但提供的模版图片只有30*30，那么匹配到的概率会大大降低。所以我们需要缩放模板图片来提高匹配概率。这里我们使用C++标准库容器来存放各个缩放等级的模板图片,以及用平方函数来计算各个等级缩放比例。类实现部分的开头如下：</p>
+
+
+```c
+#import "TemplateMatch.h"
+#include <vector>
+#include <math.h>
 
 using namespace cv;
 using namespace std;
 
 @interface TemplateMatch() {
     UIImage *_templateImage;
-    vector&lt;Mat&gt; _scaledTempls; //各个缩放等级的模板图片矩阵
+    vector<Mat> _scaledTempls; //各个缩放等级的模板图片矩阵
 }
 
 @end
-</code></pre><p>在类实现的开头部分我们定义一些 量，以便集中调整计算参数：</p>
+```
+
+
+<p>在类实现的开头部分我们定义一些常量，以便集中调整计算参数：</p>
+
 <pre><code>@implementation TemplateMatch
 
 static const float resizeRatio = 0.35;     //原图缩放比例，越小性能越好，但识别度越低
@@ -156,8 +198,12 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
 //......
 
 @end
-</code></pre><h5 id="2-2-">2.2 图片数据的转换</h5>
-<p>  OpenCV用矩阵类<code>Mat</code>来代表所处理的图片，所 需要将<code>UIImage</code>对象和<code>CMSampleBufferRef</code>数据转换为<code>Mat</code>对象，并将颜色调整为灰度以更好地适配OpenCV的一 函数。在类实现中添加以下方法：</p>
+</code></pre>
+
+<h5>2.2 图片数据的转换</h5>
+
+<p>  OpenCV用矩阵类<code>Mat</code>来代表所处理的图片，所以需要将<code>UIImage</code>对象和<code>CMSampleBufferRef</code>数据转换为<code>Mat</code>对象，并将颜色调整为灰度以更好地适配OpenCV的一些函数。在类实现中添加以下方法：</p>
+
 <pre><code>//UIImage转为OpenCV灰图矩阵
 - (Mat)cvMatGrayFromUIImage:(UIImage *)image {
     Mat img;
@@ -212,13 +258,18 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
 
     return matGray;
 }
-</code></pre><h5 id="2-3-">2.3 模板图片属性的设置</h5>
-<p>  模板图片一次设置，多次复用。一些准备性工作也在设置时完成，比如各个缩放比例的版本。另外，对于一张iPhone拍摄的原图，OpenCV模板匹配的性能其实并不高，通常会占用5-10秒的时间。这在视频捕获的应用场景中延时太高了，所以我们需要对模板图片和原图进行同比例压缩以提高性能。这里还有一个图片横 竖屏问题，AVFoundation提供的视频 默认是横屏的相当于iPhone Home键在右侧时拍摄那样。如下图所示：</p>
+</code></pre>
+
+<h5>2.3 模板图片属性的设置</h5>
+
+<p>  模板图片一次设置，多次复用。一些准备性工作也在设置时完成，比如各个缩放比例的版本。另外，对于一张iPhone拍摄的原图，OpenCV模板匹配的性能其实并不高，通常会占用5-10秒的时间。这在视频捕获的应用场景中延时太高了，所以我们需要对模板图片和原图进行同比例压缩以提高性能。这里还有一个图片横屏竖屏问题，AVFoundation提供的视频帧默认是横屏的，相当于iPhone Home键在右侧时拍摄那样。如下图所示：</p>
+
 <p align="center" >
-    <img src="http://p9f3h0583.bkt.clouddn.com/tp_portrait.png" alt="coordinates" title="coordinates" />
-  </p><br>
-    
-    所以要把模板图片逆时针旋转90度。在实际应用中，应该在ViewController中根据手机的旋转情况，对模板图片做相应 旋转 然后提供给TemplateMatch类。这里先简单处理下，就默认为竖屏方 模板图片属性设置过程 下：</p>
+  <img src="https://github.com/chenyun122/TemplateMatching/blob/master/Screenshots/tp_portrait.png?raw=true" alt="coordinates" title="coordinates" />
+</p>
+
+<p>所以要把模板图片逆时针旋转90度。在实际应用中，应该在ViewController中根据手机的旋转情况，对模板图片做相应的旋转，然后提供给TemplateMatch类。这里先简单处理下，就默认为竖屏方式。模板图片属性设置过程如下：</p>
+
 <pre><code>//设置模板图片
 //由于拍摄会存在拉远拉近的行为，所以需要建立不同大小的模板图片，进行多次匹配
 - (void)setTemplateImage:(UIImage *)templateImage {
@@ -240,7 +291,7 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
     _scaledTempls.push_back(templResized); //默认模板图也存放于模板数组中，以便循环匹配
 
     //由于模板图和原图大小比例不一致，需要放大缩小模板图，来多次比较。所以建立不同比例的模板图。
-    for(int i=0;i&lt;maxTryTimes;i++) {
+    for(int i=0;i<maxTryTimes;i++) {
         //放大模板图
         float powIncreaRation = pow(2 - scaleRation, i+1);
         resize(templ, templResized, cv::Size(0, 0), resizeRatio * powIncreaRation, resizeRatio * powIncreaRation);
@@ -252,14 +303,18 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
         _scaledTempls.push_back(templResized);
     }
 }
-</code></pre><h5 id="2-4-">2.4 进行匹配</h5>
-<p>  匹配时， 们接受<code>AVFoundation</code>提供的<code>CMSampleBufferRef</code>视频帧数据，然后将它转换成<code>Mat</code>矩阵。同模板图片一样，对矩阵进行压缩以提高性能。之后， 一个循环里依次取出各个缩放等级的模板图和大图进行匹配由于AVCapture Metadata的坐标系统的值范围在(-1,1)之间，所  匹配成功后，要按位置在图中所 的比例来进行换算。这也正好省略了将位 绝对还原的到 压缩前的值这步计算。代码如下：</p>
+</code></pre>
+
+<h5>2.4 进行匹配</h5>
+
+<p>  匹配时，我们接受<code>AVFoundation</code>提供的<code>CMSampleBufferRef</code>视频帧数据，然后将它转换成<code>Mat</code>矩阵。同模板图片一样，对矩阵进行压缩以提高性能。之后，在一个循环里依次取出各个缩放等级的模板图和大图进行匹配。由于AVCapture Metadata的坐标系统的值范围在(-1,1)之间，所以在匹配成功后，要按位置在图中所处的比例来进行换算。这也正好省略了将位置绝对值还原的到图压缩前的值这步计算。代码如下：</p>
+
 <pre><code>//接受Buffer进行匹配
 - (CGRect)matchWithSampleBuffer:(CMSampleBufferRef)sampleBuffer {
     Mat img = [self cvMatFromBuffer:sampleBuffer]; //Buffer转换到矩阵
 
     //如果图片为空，则返回空值
-    if (resizeRatio &lt;= 0 || img.cols &lt;= 0 || img.rows &lt;= 0) {
+    if (resizeRatio <= 0 || img.cols <= 0 || img.rows <= 0) {
         return CGRectZero;
     }
 
@@ -286,7 +341,7 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
     cv::Point maxLoc;
 
     //匹配不同大小的模板图
-    for (int i=0; i &lt; _scaledTempls.size(); i++) {
+    for (int i=0; i < _scaledTempls.size(); i++) {
         Mat templ = _scaledTempls[i];
 
         //创建结果矩阵，用于存放单次匹配到的位置信息(单次会匹配到很多，后面根据不同算法取最大或最小值)
@@ -299,12 +354,12 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
         matchTemplate(img, templ, result, TM_CCOEFF_NORMED);
 
         //整理出本次匹配的最大最小值
-        minMaxLoc(result, &amp;minVal, &amp;maxVal, &amp;minLoc, &amp;maxLoc, Mat());
+        minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
 
         //TM_CCOEFF_NORMED算法，取最大值为最佳匹配
         //当最大值符合要求，认为匹配成功
-        if (maxVal &gt;= acceptableValue) {
-            NSLog(@&quot;matched point:%d,%d maxVal:%f, tried times:%d&quot;,maxLoc.x,maxLoc.y,maxVal,i + 1);
+        if (maxVal >= acceptableValue) {
+            NSLog(@"matched point:%d,%d maxVal:%f, tried times:%d",maxLoc.x,maxLoc.y,maxVal,i + 1);
             return cv::Rect(maxLoc,cv::Size(templ.rows,templ.cols));
         }
     }
@@ -312,12 +367,16 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
     //未匹配到，则返回空区域
     return cv::Rect();
 }
-</code></pre><h4 id="3-viewcontroller">3. 回 ViewController</h4>
-<p>  在TemplateMatch类完成后，我们就可以回到ViewController进行调用了。先 引入TemplateMatch类头文件、声明对象、初始化等等，然后 模板图 赋给它。 模板图片也是从事先拍好的照 中截取出来 。代码如下(只列出 增加的代码)：</p>
-<pre><code>//......
-#import &quot;TemplateMatch.h&quot;
+</code></pre>
 
-@interface ViewController () &lt;AVCaptureVideoDataOutputSampleBufferDelegate&gt; {
+<h4>3. 回到ViewController</h4>
+
+<p>  在TemplateMatch类完成后，我们就可以回到ViewController进行调用了。先是引入TemplateMatch类头文件、声明对象、初始化等等，然后将模板图片赋给它。 模板图片也是从事先拍好的照片中截取出来的。代码如下(只列出了增加的代码)：</p>
+
+<pre><code>//......
+#import "TemplateMatch.h"
+
+@interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate> {
     TemplateMatch *templateMatch;
 }
 
@@ -332,11 +391,14 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
 
     //初始化模板匹配对象，并设置模板图
     templateMatch = [[TemplateMatch alloc] init];
-    templateMatch.templateImage = [UIImage imageNamed:@&quot;apple&quot;];
+    templateMatch.templateImage = [UIImage imageNamed:@"apple"];
 
     //.....
 }
-</code></pre><接下来就是视频捕获代理方法中，进行调用了：</p>
+</code></pre>
+
+<p>接下来就是视频捕获代理方法中，进行调用了：</p>
+
 <pre><code>- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
     CGRect rect = [templateMatch matchWithSampleBuffer:sampleBuffer]; //将buffer提交给OpenCV进行模板匹配
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -348,17 +410,26 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
         }
     });
 }
-</code></pre><p>就这么几行代码，是不是使用起来So easy? :D</p>
-<hr>
-<h3 id="-">四. 绘制矩形提示位置</h3>
-<p>  最后，要将匹配到位置区域绘制到屏幕上。这里我们就简单增加一个CALayer, 然后设置好红色边框，再根据位置的不同调整下Frame, 就可以有一 动 红框框了。先声明一个对象：</p>
-<pre><code>@interface ViewController () &lt;AVCaptureVideoDataOutputSampleBufferDelegate&gt; {
+</code></pre>
+
+<p>就这么几行代码，是不是使用起来So easy? :D</p>
+
+<hr />
+
+<h3>四. 绘制矩形提示位置</h3>
+
+<p>  最后，要将匹配到位置区域绘制到屏幕上。这里我们就简单增加一个CALayer, 然后设置好红色边框，再根据位置的不同调整下Frame, 就可以有一个动态红框框了。先声明一个对象：</p>
+
+<pre><code>@interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate> {
     //......
     CALayer *rectangleLayer;
 }
-</code></pre><p>再定义绘制方法：</p>
+</code></pre>
+
+<p>再定义绘制方法：</p>
+
 <pre><code>// 绘制标识框
-- (void)drawRectangleAtPoint:(CGRect)rect {
+- (void)drawRectangle:(CGRect)rect {
     if (rectangleLayer == nil) {
         rectangleLayer = [CALayer layer];
         rectangleLayer.frame = CGRectMake(0, 0, templateMatch.templateImage.size.width, templateMatch.templateImage.size.height);
@@ -375,17 +446,24 @@ static const float scaleRation = 0.75;     //当模板未被识别时，尝试�
 - (void)hideRectangle {
     rectangleLayer.hidden = YES;
 }
-</code></pre><p>  终于到了世界的尽头，我们再完善下视频捕获代理方法。由于视频的尺寸和屏幕宽高比不一定一致, 再加上点坐 对应的是横屏方式，所以绘制红框时需要进行坐标转换。辛运的是AFoundation已提供现有方法<code>rectForMetadataOutputRectOfInterest</code>来转换：</p>
+</code></pre>
+
+<p>  终于到了世界的尽头，我们再完善下视频捕获代理方法。由于视频的尺寸和屏幕宽高比不一定一致, 再加上点坐标对应的是横屏方式，所以绘制红框时需要进行坐标转换。幸运的是AVFoundation已提供现有方法<code>rectForMetadataOutputRectOfInterest</code>来转换：</p>
+
 <pre><code>- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
     CGRect rect = [templateMatch matchWithSampleBuffer:sampleBuffer]; //将buffer提交给OpenCV进行模板匹配
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!CGRectEqualToRect(rect,CGRectZero)) { //匹配成功，则绘制标识框
-            [self drawRectangleAtPoint:[self.videoPreviewLayer rectForMetadataOutputRectOfInterest:rect]]; //由于视频的尺寸和屏幕宽高比不一定一致，所以对于视频中的一个点坐标，需要转换到屏幕的对应位置中。
+            [self drawRectangle:[self.videoPreviewLayer rectForMetadataOutputRectOfInterest:rect]]; //由于视频的尺寸和屏幕宽高比不一定一致，所以对于视频中的一个点坐标，需要转换到屏幕的对应位置中。
         }
         else{ //未匹配到，则隐藏标识框
             [self hideRectangle];
         }
     });
 }
-</code></pre><p>  这 一个关于TemplateMatching的项目就完成了，总共才300行不到代码，很容易阅读和掌握。</p>
-<p>本文对应<a href="https://github.com/chenyun122/TemplateMatching">Demo源码</a>下载。下完源码记得手动下载OpenCV framework, 它太大了，无法直接放在项目中。<br>原创文章，如需转载，请注明出处(<a href="https://blog.happyyun.com/2018/05/29/opencv-template-matching/">https://blog.happyyun.com</a>)，非常感谢！</p>
+</code></pre>
+
+<p>  这样一个关于Template Matching的项目就完成了，总共才300行不到代码，很容易阅读和掌握。</p>
+
+<p>本文对应<a href="https://github.com/chenyun122/TemplateMatching">Demo源码</a>下载。下完源码记得手动下载OpenCV framework, 它太大了，无法直接放在项目中。<br />
+原创文章，如需转载，请注明出处(<a href="https://blog.happyyun.com/2018/05/29/opencv-template-matching/">https://blog.happyyun.com</a>)，非常感谢！</p>

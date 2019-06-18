@@ -1,0 +1,60 @@
+<p>     关于iOS事件响应链在面试中也是一个被经常问到的问题。如果把响应链想成单向传递就有些欠缺，最好从事件的“传递”和“响应”两条线路来理解比较好。</p>
+<br />
+<br />
+<ul>
+<li><strong>“传递”指比如用户触碰屏幕后，事件由UIApplication->UIViewController->UIView这样一个顺序传递。</strong> </li>
+<li><strong>“响应”则是反过来，由UIView->UIViewController->UIApplication这样一个顺序去响应。</strong></li>
+</ul>
+
+<p>     两条线路的发生顺序是先“传递”再“响应”。事件发生时，“传递”的意义好比系统这个领导找下属来处理这件事，“响应”则好像下属说这件事他来处理。当有下属响应时，领导就就交给下属去处理了(自己不管了)；当没有下属响应时，可能要领导自己来处理。如果谁都不响应该事件，那么该事件最终回到系统并被丢弃。本来过程就这样了，但当有中层领导决定自己处理事件，不再交给下属，便发生“传递阻断”；还有一种特殊情况，当下属处理完了后，还要领导再处理一下，便发生了“响应延续”。需要注意的是，当“传递阻断”发生后，阻断点后面的View的响应过程也就不会再发生了。关于具体的系统方法，介入“传递”过程，一般由<code>hitTest</code>方法处理；而“响应”，一般由<code>touchesBegan</code>系列方法处理。</p>
+
+<hr />
+
+<p>下面举例说明“传递阻断”和“响应延续”：</p>
+
+<h3>一. 传递阻断</h3>
+
+<p>1. <strong>父子间事件传递阻断</strong><br />
+一旦父View实现了<code>hitTest</code>方法，其子View将收不到事件。 比如页面结构如下： <center>
+  <img src="https://blog.happyyun.com/wp-content/uploads/2018/08/屏幕快照-2018-08-07-下午3.57.36-300x183.png" alt="" width="300" height="183" class="alignnone size-medium wp-image-319" />
+</center></p>
+
+<p>如果<span style="color:orange">橙色View</span>实现了以下方法，则其<span style="color:blue">蓝色子View</span>不能接收到事件：</p>
+
+<pre><code>- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    return self; // 或者 return nil;
+}
+</code></pre>
+
+<p>返回self表示本身就是合适的响应对象,事件不再传递给子View。如果子View当中有个Button，那个Button也是不会响应的。返回nil则表示本身以及所有子View都不是合适的响应对象。所以以上情况，<span style="color:blue">蓝色View</span>都是收不到事件了, 即使它实现了<code>touchesBegan</code>系列方法也不会被执行。</p>
+
+<p>2. <strong>同级View事件阻断</strong><br />
+没错，两个同级别的View也能把对方的事件给阻止了。比如页面结构如下：<center>
+  <img src="https://blog.happyyun.com/wp-content/uploads/2018/08/未命名-2.png" alt="" width="563" height="265" class="alignnone size-full wp-image-333" />
+</center> 这里有几种情况：</p>
+
+<p>a. 上面的<span style="color:orange">橙色View</span>实现了<code>hitTest</code>方法并返回self, 则<span style="color:green">绿色View</span>收不到事件。<br />
+b. 那么如果<span style="color:green">绿色View</span>也实现了<code>hitTest</code>方法并返回self呢？依然是<span style="color:green">绿色View</span>收不到事件，因为<span style="color:orange">橙色View</span>比<span style="color:green">绿色View</span>后添加（见上图侧边View结构），也就是说subView[1]比subView[0]先进行hitTest。一旦subView[1]确认自己是合适的响应对象，就没有subView[0]什么事了。<br />
+c. <span style="color:orange">橙色View</span>和<span style="color:orange">绿色View</span>的<code>hitTest</code>方法都返回nil呢？那么不会存在相互阻断的情况。</p>
+
+<p>3. <strong><code>pointInside</code>方法</strong><br />
+当<code>hitTest</code>方法被实现情况下，<code>pointInside</code>方法是不会被调用。因为<code>hitTest</code>方法已经决定了本View是否适合响应。所以，只有在<code>hitTest</code>方法没实现时，<code>pointInside</code>方法才有意义，并被用作计算点击是否在此View内。当<code>pointInside</code>方法返回YES时，它便有了阻断事件效果(意味着它自己来处理这个事件，不再询问它的子View是否要响应)。它的意义如同上面的<span style="color:orange">橙色View</span>返回了self，同样也实现了同级View间的事件阻断。但这种方式下，父子View不可阻断，这点和<code>hitTest</code>方法不同。</p>
+
+<p>4. <strong>事件阻断的意义</strong><br />
+a.可以自由决定自己是否处理该事件还是交给别人。比如绘制一个不规则Button时，比如6角星，我们只在点击6角星内时认为点了按钮，点了外面则不响应。此时就可以通过点击的位置point来计算，并决定是否响应。不规则区域内的正常响应，对于不规则区域外的点击事件就交由系统处理，相当于没有点击到这个View一样。关于不规则View的创建可以参考这个项目源码：<a href="https://github.com/chenyun122/EllipseButton">EllipseButton，一个不规则Button的例子</a><br />
+b.可作为除了<code>userInteractionEnabled = NO;</code>外，另外一种用来拒绝接收事件的方法：<code>pointInside</code>返回NO, 或<code>hitTest</code>返回nil即可。即使强制把userInteractionEnabled设为YES也不管用。</p>
+
+<h3>二. 响应延续</h3>
+
+<p>系统默认认为应该响应的View，一般为点击区域最顶层的View；或者<code>hitTest</code>方法返回self强制霸占响应的View。如果它没有实现<code>touchesBegan</code>系列方法，代表它不响应，这时系统会找它的父View去确认是否响应。但如果当前View实现了<code>touchesBegan</code>系列方法，系统便不再找它的父View去确认。此时如果要父View继续响应，显式调用父View方法即可：</p>
+
+<pre><code>- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    //先做自己的事
+    //再调用父View响应
+    [super touchesBegan:touches withEvent:event];
+}
+</code></pre>
+
+<h3>三. 项目实战</h3>
+
+<p>这个项目中，利用<code>pointInside</code>和响应延续的方法，来处理不规则Button中的点击事件。只有不规则区域内的可被点击，区域外的点击事件忽略，同时确保不影响原有的按钮点击事件。源码：<a href="https://github.com/chenyun122/EllipseButton">EllipseButton，一个不规则Button的例子</a></p>
