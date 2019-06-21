@@ -23,14 +23,22 @@ Texture框架比较大，这里只列出和ASTableView相关的几个关键类�
 
 实际上类之间调用非常复杂，上图只是精简出了一部分，用于大体理解。从上图看出，ASTableView被ASTableNode持有的同时，也作为ViewController的view。多个ASCellNode被缓存于ASDataController中，单个ASCellNode与_ASTableViewCell一对一绑定。
 
-### 计算Cell高度  
- 对于展示动态内容的TableView，比如朋友圈，由于内容长短不定，我们第一个遇到的问题往往是计算Cell的高度。ASTableView采用的方案的是，让Cell在子线程中根据数据自计算布局，得到高度，然后在主线程使用。计算好的布局信息会随ASCellNode缓存在`ASDataController`，以便复用。  
- 不论是ASTableView自布局，还是调用了`reloadData`方法，都会触发布局计算。这里布局计算的入口方法为`endUpdatesAnimated`。如图：
+## 计算Cell高度  
+ 对于展示动态内容的TableView，比如朋友圈，由于内容长短不定，我们第一个遇到的问题往往是计算Cell的高度。ASTableView采用的方案的是，让Cell在子线程中根据数据自计算布局，得到高度，然后在主线程使用。计算好的布局信息会随ASCellNode缓存在`ASDataController`，以便复用。
+
+### 调用栈
+ 不论是ASTableView自布局，还是调用了`reloadData`方法，都会触发布局计算。这里布局计算的入口方法为`endUpdatesAnimated`，在主线程调用。如图：
 
 ![](endUpdates2.png)
 
+之后的调用过程如下图：
+<center><img src="./callingStack.png" width="90%"></center>
 
-ASTableView:
+<br>
+
+以上过程对应的精简代码如下：  
+**ASTableView**  
+ASTableView调用ASDataController的`updateWithChangeSet`方法更新change set：
 ``` Objective-C
 - (void)endUpdatesAnimated:(BOOL)animated completion:(void (^)(BOOL completed))completion
 {
@@ -41,8 +49,8 @@ ASTableView:
 }
 ```
 
-ASDataController:
-
+**ASDataController**  
+ASDataController创建一个GCD的Group，在串行队列中为多个ASCollectionElement分配Node：
 ``` Objective-C
 - (void)updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet
 {
@@ -54,7 +62,7 @@ ASDataController:
     }
 }
 ```
-
+在_allocateNodesFromElements方法中，会通过Block请求到一个ASCellNode，在此例子中，即`PostNode`。 该Block即ViewController中的代理方法`nodeBlockForRowAtIndexPath`返回所得。接着对Node进行布局：
 ``` Objective-C
 
 - (void)_allocateNodesFromElements:(NSArray<ASCollectionElement *> *)elements
@@ -67,7 +75,7 @@ ASDataController:
     //.....
 }
 ```
-
+最终会触发Node自己的布局方法：
 ```Objective-C
 - (void)_layoutNode:(ASCellNode *)node withConstrainedSize:(ASSizeRange)constrainedSize
 {
@@ -77,7 +85,8 @@ ASDataController:
 }
 ```
 
-ASDisplayNode (ASDisplayNode+Layout.mm):
+**ASDisplayNode** (ASDisplayNode+Layout.mm)
+如果之前计算好的或即将显示的布局依然可用，则直接返回。否则创建一个即将显示的布局：
 ```Objective-C
 - (ASLayout *)layoutThatFits:(ASSizeRange)constrainedSize parentSize:(CGSize)parentSize
 {
@@ -97,7 +106,7 @@ ASDisplayNode (ASDisplayNode+Layout.mm):
 }
 ```
 
-最后`PostNode`这个自定义的`ASCellNode`得到机会，根据Model内容计算布局。调用栈：
+最后`PostNode`这个自定义的`ASDisplayNode`子类，会构建一个布局说明`ASLayoutSpec`，告诉父类具体的布局内容和方式。这一块也是使用此SDK开发者的工作。调用栈：
 ![](postNode.png)
 
 
