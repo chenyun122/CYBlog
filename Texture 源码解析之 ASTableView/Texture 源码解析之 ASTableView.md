@@ -12,7 +12,7 @@
 
 ## 关键类  
 Texture框架比较大，这里只列出和ASTableView相关的几个关键类，多了反而看花眼。它们之间大致的持有关系如下图：
-<center><img src="./class.png" width="80%"></center>
+<center><img src="./class.png" width="95%"></center>
 
 - `ASViewController : UIViewController`。持有`ASDisplayNode`的UIViewController，用于支持异步渲染。
 - `ASTableNode : ASDisplayNode` 。用于渲染TableView的Node, 它持有一个`ASTableView`对象。
@@ -20,6 +20,7 @@ Texture框架比较大，这里只列出和ASTableView相关的几个关键类�
 - `ASDataController : NSObject` 。用于在后台管理和刷新布局数据的控制器。
 - `_ASTableViewCell : UITableViewCell` 。配合Node的UITableViewCell。
 - `ASCellNode : ASDisplayNode` 。 用于ASTableView和ASCollectionView的通用Cell Node。
+- `ASRangeController : NSObject` 。与ASDataController配对使用，用于观察ASTableView 和 ASCollectionView 的可视范围，并做相应的渲染和驱动Cell进行异步布局计算。
 
 实际上类之间调用非常复杂，上图只是精简出了一部分，用于大体理解。从上图看出，ASTableView被ASTableNode持有的同时，也作为ViewController的view。多个ASCellNode被缓存于ASDataController中，单个ASCellNode与_ASTableViewCell一对一绑定。
 
@@ -27,11 +28,11 @@ Texture框架比较大，这里只列出和ASTableView相关的几个关键类�
  对于展示动态内容的TableView，比如朋友圈，由于内容长短不定，我们第一个遇到的问题往往是计算Cell的高度。ASTableView采用的方案的是，让Cell在子线程中根据数据自计算布局，得到高度，然后在主线程使用。计算好的布局信息会随ASCellNode缓存在`ASDataController`，以便复用。
 
 ### 触发布局计算
- 不论是ASTableView自布局，还是调用了`reloadData`方法，都会触发布局计算。计算从方法`endUpdatesAnimated`开始，在主线程调用。如图：
+ 要得到正确的Cell高度，就得先计算Cell布局。不论是ASTableView自布局，还是调用了其`reloadData`方法，都会触发布局计算。计算从`endUpdatesAnimated`方法开始，在主线程调用。调用栈：
 
 ![](endUpdates2.png)
 
-注意此时并不会触发UITableView的`reloadData`方法，而是等到子线程完成计算后，再执行真正的reloadData。所以，如果子线程计算过久，界面便会出现一段时间的空白。  
+注意此时并不会触发**UI**TableView的`reloadData`方法，而是等到子线程完成计算后，再执行真正的reloadData。所以，如果子线程计算过久，界面便会出现一段时间的空白。  
 
 调起布局计算的过程如下图：
 <center><img src="./callingStack.png" width="90%" ></center>
@@ -44,15 +45,18 @@ ASTableView调用ASDataController的`updateWithChangeSet`方法更新change set�
 ``` Objective-C
 - (void)endUpdatesAnimated:(BOOL)animated completion:(void (^)(BOOL completed))completion
 {
-    //...... 代表此处省略多行代码，下同
+    //...... 代表此处省略多行代码，以便观察关键代码。下同。
+
     _ASHierarchyChangeSet *changeSet = _changeSet;
+
     //......
+
     [_dataController updateWithChangeSet:changeSet];
 }
 ```
 
 **ASDataController**  
-ASDataController创建一个GCD的Group，在串行队列中为多个ASCollectionElement分配Node：
+ASDataController会创建一个GCD Group，在串行队列中为多个ASCollectionElement分配Node：
 ``` Objective-C
 - (void)updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet
 {
@@ -82,13 +86,14 @@ ASDataController创建一个GCD的Group，在串行队列中为多个ASCollectio
 - (void)_layoutNode:(ASCellNode *)node withConstrainedSize:(ASSizeRange)constrainedSize
 {
   //......
+
   frame.size = [node layoutThatFits:constrainedSize].size;
-  //......
+  node.frame = frame;
 }
 ```
 
 **ASDisplayNode** (ASDisplayNode+Layout.mm)
-如果之前计算好的或即将显示的布局依然可用，则直接返回。否则创建一个即将显示的布局：
+Node自己的布局方法主要由基类`ASDisplayNode`实现。如果之前计算好的或即将显示（pending display）的布局依然可用，则直接返回。否则创建一个即将显示的布局：
 ```Objective-C
 - (ASLayout *)layoutThatFits:(ASSizeRange)constrainedSize parentSize:(CGSize)parentSize
 {
@@ -108,8 +113,13 @@ ASDataController创建一个GCD的Group，在串行队列中为多个ASCollectio
 }
 ```
 
-最后`PostNode`这个自定义的`ASDisplayNode`子类，会构建一个布局说明`ASLayoutSpec`，告诉父类具体的布局内容和方式。这一块也是使用此SDK开发者的工作。调用栈：
+最后`PostNode`这个开发者自定义的`ASDisplayNode`子类，会构建一个布局说明`ASLayoutSpec`，告诉父类具体的布局内容和方式。这一块也是使用此SDK开发者的工作。调用栈：
 ![](postNode.png)
+
+关于布局如何自定义，请参考`[PostNode layoutSpecThatFits:]`方法。它的结构大体如下图：
+<center><img src="./cellLayout.png" width="50%" ></center>
+
+红框代表ASInsetLayoutSpec，它对它唯一的子元素实施了inset(类似padding)效果。篮框代表这个子元素，是一个水平方向的ASStackLayoutSpec，分左右两部分：左边头像，右边人名、内容等信息。右边也是一个垂直方向的ASStackLayoutSpec，而人名和点赞那两行又是水平方向的ASStackLayoutSpec。
 
 ### 布局计算
 **ASDisplayNode** (ASDisplayNode+LayoutSpec.mm)  
@@ -158,7 +168,7 @@ ASLayoutSpec中实现的ASLayoutElement协议方法会被调用。而ASLayoutSpe
 ```
 
 **ASStackLayoutSpec**
-由于上面ASInsetLayoutSpec包含了一个`ASStackLayoutSpec`，所以调用Child布局触发了ASStackLayoutSpec的布局计算。ASStackLayoutSpec自己实现了协议方法`calculateLayoutThatFits:`，由该方法执行它自己的布局计算。这里比较重要的是` ASStackUnpositionedLayout::compute`方法，CSS Flexible Box布局的计算便由它完成。由于CSS计算比较复杂，这里不再展开，有兴趣的同学可以从以下代码追踪查看。
+由于上面ASInsetLayoutSpec包含了一个`ASStackLayoutSpec`，所以调用Child布局触发了ASStackLayoutSpec的布局计算。ASStackLayoutSpec自己实现了协议方法`calculateLayoutThatFits:`，由该方法执行它自己的布局计算。这里比较重要的是` ASStackUnpositionedLayout::compute`方法，**CSS Flexible Box**布局的计算便由它完成。由于CSS计算过程比较复杂，这里不再展开，有兴趣的同学可以从以下代码追踪查看。
 ``` Objective-C
 - (ASLayout *)calculateLayoutThatFits:(ASSizeRange)constrainedSize
 {
@@ -180,14 +190,81 @@ ASLayoutSpec中实现的ASLayoutElement协议方法会被调用。而ASLayoutSpe
 以上只出现了2种Layout Specs，更多参考[Layout Specs](http://texturegroup.org/docs/layout2-layoutspec-types.html)。
 
 
-### UI展现
+### UI层获得Cell高度
+ASDataController完成布局计算后，通过ASRangeController通知ASTableView刷新界面。它们之间的代理关系如下：
+<center><img src="./informTableView.png" width="30%"></center>
+
 
 **ASDataController**
+完成布局计算后，在主线程，通知ASRangeController：
+``` Objective-C
+- (void)updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet
+{
+  //......
 
+  dispatch_group_async(_editingTransactionGroup, _editingTransactionQueue, ^{
+    //......
 
+    // Step 4: Inform the delegate on main thread
+    [_mainSerialQueue performBlockOnMainThread:^{
+      as_activity_scope_leave(&preparationScope);
+      [_delegate dataController:self updateWithChangeSet:changeSet updates:^{
+        // Step 5: Deploy the new data as "completed"
+        self.visibleMap = newMap;
+      }];
+    }];
+
+    //......
+}
+```
+
+**ASRangeController**
+通知ASTableView：
+``` Objective-C
+#pragma mark - ASDataControllerDelegete
+
+- (void)dataController:(ASDataController *)dataController updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet updates:(dispatch_block_t)updates
+{
+  ASDisplayNodeAssertMainThread();
+  if (changeSet.includesReloadData) {
+    [self _setVisibleNodes:nil];
+  }
+  _rangeIsValid = NO;
+  [_delegate rangeController:self updateWithChangeSet:changeSet updates:updates];
+}
+```
 
 **ASTableView**
-回到主线程，在UITableView的代理方法中，从ASDataController中取得Node并返回高度：
+得到通知，刷新界面。在以下代码中，`[super reloadData];`即调用其父类UITableView重载数据：
+``` Objective-C
+#pragma mark - ASRangeControllerDelegate
+
+- (void)rangeController:(ASRangeController *)rangeController updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet updates:(dispatch_block_t)updates
+{
+  //......
+
+  if (changeSet.includesReloadData) {
+    LOG(@"UITableView reloadData");
+    ASPerformBlockWithoutAnimation(!changeSet.animated, ^{
+      if (self.test_enableSuperUpdateCallLogging) {
+        NSLog(@"-[super reloadData]");
+      }
+      updates();
+      [super reloadData];
+      // Flush any range changes that happened as part of submitting the reload.
+      [_rangeController updateIfNeeded];
+      [self _scheduleCheckForBatchFetchingForNumberOfChanges:1];
+      [changeSet executeCompletionHandlerWithFinished:YES];
+    });
+    return;
+  }
+
+  //......
+}
+```
+
+
+UITableView的代理方法被调用，从ASDataController中取得Node并返回高度：
 ``` Objective-C
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
@@ -203,3 +280,5 @@ ASLayoutSpec中实现的ASLayoutElement协议方法会被调用。而ASLayoutSpe
   //......
 }
 ```
+
+## 展现Cell  
