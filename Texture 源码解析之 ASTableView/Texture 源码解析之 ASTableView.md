@@ -4,7 +4,7 @@
  [Texture](https://github.com/TextureGroup/Texture)(原为AsyncDisplayKit)框架的强大已不必说。对于AsyncDisplayKit的源码分析，下面这篇文章总结了很多关键点，非常值得参考：[《AsyncDisplayKit源码分析》](https://github.com/LeoMobileDeveloper/Blogs/blob/master/iOS/Anaylize%20AsyncDisplayKit.md)。如果刚接触这个框架，建议先看上面一文。 本文主要针对ASTableView进行展开，TableView平时用的非常多，也较容易发生卡顿。通过对ASTableView源码的学习，可以了解大神如何将异步渲染机制和UITableView机制相结合，做到复杂列表界面的流畅。万一项目中要造类似的轮子，相关的思路就可以借鉴了。
 
 ## 案例
- 本文基于Texture框架[2.8.1](https://github.com/TextureGroup/Texture/releases/tag/2.8.1)版本，随着时间某些代码可能会变化。演示项目为开源库中的一个例子：[SocialAppLayout](https://github.com/TextureGroup/Texture/tree/master/examples/SocialAppLayout) 。下载后，需用[Pods](https://cocoapods.org/)导入依赖库(同时也会导入Texture框架源码)。 运行界面如下：
+ 本文基于Texture框架[2.8.1](https://github.com/TextureGroup/Texture/releases/tag/2.8.1)版本，随着时间某些代码可能会变化。演示项目为开源库中的一个例子：[SocialAppLayout](https://github.com/TextureGroup/Texture/tree/master/examples/SocialAppLayout) 。下载后，需用[Pods](https://cocoapods.org/)导入依赖库(同时也会导入Texture框架源码)。 运行界面如下，是一个很常规的列表：
 
 <center><img src="./ScreenShot.png" width="50%" style="border:1px solid lightGray;"></center>
 
@@ -25,7 +25,7 @@ Texture框架比较大，这里只列出和ASTableView相关的几个关键类�
 实际上类之间调用非常复杂，上图只是精简出了一部分，用于大体理解。从上图看出，ASTableView被ASTableNode持有的同时，也作为ViewController的view。多个ASCellNode被缓存于ASDataController中，单个ASCellNode与_ASTableViewCell一对一绑定。
 
 ## 计算Cell高度  
- 对于展示动态内容的TableView，比如朋友圈，由于内容长短不定，我们第一个遇到的问题往往是计算Cell的高度。ASTableView采用的方案的是，让Cell在子线程中根据数据自计算布局，得到高度，然后在主线程使用。计算好的布局信息会随ASCellNode缓存在`ASDataController`，以便复用。
+ 对于展示动态内容的TableView，比如朋友圈，由于内容长短不一，我们第一个遇到的问题往往是计算Cell的高度。ASTableView采用的方案的是，让Cell在子线程中根据数据自计算布局，得到高度，然后在主线程使用。计算好的布局信息会随ASCellNode缓存在`ASDataController`，以便复用。
 
 ### 触发布局计算
  要得到正确的Cell高度，就得先计算Cell布局。不论是ASTableView自布局，还是调用了其`reloadData`方法，都会触发布局计算。计算从`endUpdatesAnimated`方法开始，在主线程调用。调用栈：
@@ -130,7 +130,7 @@ Node自己的布局方法主要由基类`ASDisplayNode`实现。如果之前计�
   //......
 
   // Get layout element from the node
-  // 这句从PostNode出得到开发者自定义的ASLayoutSpec
+  // 这句从PostNode处得到开发者自定义的ASLayoutSpec
   id<ASLayoutElement> layoutElement = [self _locked_layoutElementThatFits:constrainedSize];
 
   //......
@@ -273,7 +273,8 @@ UITableView的代理方法被调用，从ASDataController中取得Node并返回�
   ASCollectionElement *element = [_dataController.visibleMap elementForItemAtIndexPath:indexPath];
   if (element != nil) {
     ASCellNode *node = element.node;
-    ASDisplayNodeAssertNotNil(node, @"Node must not be nil!");
+    
+    //这里已可以取到之前计算好的或Pending Display的高度了
     height = [node layoutThatFits:element.constrainedSize].size.height;
   }
 
@@ -282,3 +283,152 @@ UITableView的代理方法被调用，从ASDataController中取得Node并返回�
 ```
 
 ## 展现Cell  
+
+**ASTableView**
+ASTableView自己实现了`cellForRowAtIndexPath:`方法。这里比较重要的是调用了ASRangeController的`configureContentView:forCellNode:`方法，它将Node的内容的渲染到contentView上。代理方法代码：
+``` Objective-C
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+  _ASTableViewCell *cell = [self dequeueReusableCellWithIdentifier:kCellReuseIdentifier forIndexPath:indexPath];
+  cell.delegate = self;
+
+  ASCollectionElement *element = [_dataController.visibleMap elementForItemAtIndexPath:indexPath];
+  cell.element = element;
+  ASCellNode *node = element.node;
+  if (node) {
+    [_rangeController configureContentView:cell.contentView forCellNode:node];
+  }
+
+  return cell;
+}
+```
+
+**_ASTableViewCell**
+上面`cell.element = element;`这这一句，会将 Node 带的View属性（通常我们在自定义Cell时做了这些设置）设置到 Cell，比如 Cell 背景色。代码：
+``` Objective-C
+- (void)setElement:(ASCollectionElement *)element
+{
+  _element = element;
+  ASCellNode *node = element.node;
+  
+  if (node) {
+    self.backgroundColor = node.backgroundColor;
+    self.selectedBackgroundView = node.selectedBackgroundView;
+    self.backgroundView = node.backgroundView;
+
+    //.....
+
+    // the following ensures that we clip the entire cell to it's bounds if node.clipsToBounds is set (the default)
+    // This is actually a workaround for a bug we are seeing in some rare cases (selected background view
+    // overlaps other cells if size of ASCellNode has changed.)
+    self.clipsToBounds = node.clipsToBounds;
+  }
+   
+  //......
+}
+```
+
+**ASRangeController**
+如果当前 Node 的 View 就是 ContentView，则会跳过设置。否则当前 Node 的 View 就设置为 ContentView：
+``` Objective-C
+- (void)configureContentView:(UIView *)contentView forCellNode:(ASCellNode *)node
+{
+  //......
+
+  if (node.view.superview == contentView) {
+    // this content view is already correctly configured
+    return;
+  }
+  
+  for (UIView *view in contentView.subviews) {
+    [view removeFromSuperview];
+  }
+  
+  [contentView addSubview:node.view];
+}
+```
+
+**ASDisplayNode**
+如果当前 Node 的 View 是第一次被使用，那么以上`node.view.superview`语句将触发 View 的创建过程：
+``` Objective-C
+- (UIView *)view
+{
+  //......
+
+  if (_view != nil) {
+    return _view;
+  }
+
+  //......
+  
+  // Loading a view needs to happen on the main thread
+  ASDisplayNodeAssertMainThread();
+  [self _locked_loadViewOrLayer];
+  
+  //......
+  
+  [self _locked_applyPendingStateToViewOrLayer];
+  
+  // The following methods should not be called with a lock
+  l.unlock();
+
+  // No need for the lock as accessing the subviews or layers are always happening on main
+  [self _addSubnodeViewsAndLayers];
+  
+  // A subclass hook should never be called with a lock
+  [self _didLoad];
+
+  return _view;
+}
+```
+
+`_locked_applyPendingStateToViewOrLayer`方法会将状态应用到View或者Layer上, 比如 frame、clipsToBounds、hidden 等巨多属性：
+``` Objective-C
+- (void)_locked_applyPendingViewState
+{
+  //......
+
+  if (_flags.layerBacked) {
+    [_pendingViewState applyToLayer:_layer];
+  } else {
+    BOOL specialPropertiesHandling = ASDisplayNodeNeedsSpecialPropertiesHandling(checkFlag(Synchronous), _flags.layerBacked);
+    [_pendingViewState applyToView:_view withSpecialPropertiesHandling:specialPropertiesHandling];
+  }
+
+  //......
+}
+```
+
+**_ASPendingState**  
+_ASPendingState是尚未创建的 View 的代理。一旦 View 被创建，那么可以调用其`applyToView:`方法将状态设置到 View 。 
+
+**ASDisplayNode+UIViewBridge**  
+那么上面的 _ASPendingState 状态从哪里来？ 一部分是在布局计算中，需要设置View状态时，都会设置在_ASPendingState中。在`ASDisplayNode+UIViewBridge.mm`类中有大量这样的操作，比如：
+``` Objective-C
+- (void)setBounds:(CGRect)newBounds
+{
+  _bridge_prologue_write;
+  //下面这句宏调用就是将 bounds 设置到 PendingViewState 中
+  _setToViewOrLayer(bounds, newBounds, bounds, newBounds);
+  self.threadSafeBounds = newBounds;
+}
+```
+
+**ASDisplayNode**
+对于 Sub View, `ASDisplayNode`会将上面的步骤以递归的方式创建：
+``` Objective-C
+- (void)_insertSubnodeSubviewOrSublayer:(ASDisplayNode *)subnode atIndex:(NSInteger)idx
+{
+  //......
+
+  // If we can use view API, do. Due to an apple bug, -insertSubview:atIndex: actually wants a LAYER index,
+  // which we pass in.
+  if (canUseViewAPI(self, subnode)) {
+    [_view insertSubview:subnode.view atIndex:idx];
+  } else {
+    [_layer insertSublayer:subnode.layer atIndex:(unsigned int)idx];
+  }
+}
+```
+
+## 小结  
