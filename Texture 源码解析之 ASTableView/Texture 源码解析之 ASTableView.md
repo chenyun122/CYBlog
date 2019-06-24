@@ -1,7 +1,8 @@
 > 本文根据案例解析了Texture(AsyncDisplayKit)框架中的ASTableView。
 
 ## 前言
- [Texture](https://github.com/TextureGroup/Texture)(原为AsyncDisplayKit)框架的强大已不必说。对于AsyncDisplayKit的源码分析，下面这篇文章总结了很多关键点，非常值得参考：[《AsyncDisplayKit源码分析》](https://github.com/LeoMobileDeveloper/Blogs/blob/master/iOS/Anaylize%20AsyncDisplayKit.md)。如果刚接触这个框架，建议先看上面一文。 本文主要针对ASTableView进行展开，TableView平时用的非常多，也较容易发生卡顿。通过对ASTableView源码的学习，可以了解大神如何将异步渲染机制和UITableView机制相结合，做到复杂列表界面的流畅。万一项目中要造类似的轮子，相关的思路就可以借鉴了。
+ [Texture](https://github.com/TextureGroup/Texture)(原为AsyncDisplayKit)框架为我们提供了确保用户体验平滑和快速响应的解决方案，让我们的APP可以在显示复杂内容情况下达到每秒60帧的刷新率。一直很好奇它是如何凭借异步渲染做到这一点的，于是想对其源码一探究竟。无奈源码如此浩瀚，短时间应该无法理解其精髓了😂。所以只能由浅入深，对平时用的较多的TableView先研究一番。
+ 本文围绕着UITableView的继承者ASTableView进行展开。ASTableView通过大量骚操作(约2000行代码)，和神队友(相关类)一起，实现了UITableView与Texture框架异步渲染机制的集成，达到了德芙般的丝滑。我们基于一个案例项目，从经典的UITableView使用步骤："计算Cell高度和创建可复用的Cell" 为切入点，来了解UITableView和框架的协同，为以后进一步深入打个基础。
 
 ## 案例
  本文基于Texture框架[2.8.1](https://github.com/TextureGroup/Texture/releases/tag/2.8.1)版本，随着时间某些代码可能会变化。演示项目为开源库中的一个例子：[SocialAppLayout](https://github.com/TextureGroup/Texture/tree/master/examples/SocialAppLayout) 。下载后，需用[Pods](https://cocoapods.org/)导入依赖库(同时也会导入Texture框架源码)。 运行界面如下，是一个很常规的列表：
@@ -10,7 +11,7 @@
 
 （本文并不介绍ASTableView的具体使用，如需要，看此演示项目也可了解。）
 
-## 关键类  
+## 主要相关类  
 Texture框架比较大，这里只列出和ASTableView相关的几个关键类，多了反而看花眼。它们之间大致的持有关系如下图：
 <center><img src="./class.png" width="95%"></center>
 
@@ -281,11 +282,13 @@ UITableView的代理方法被调用，从ASDataController中取得Node并返回�
   //......
 }
 ```
+通过以上步骤，我们大致了解了Cell的高度是怎么被异步计算的。
 
 ## 展现Cell  
-
+ 取得 Cell 高度后，下面便是要创建具体的 Cell 用于显示了。  
+  
 **ASTableView**
-ASTableView自己实现了`cellForRowAtIndexPath:`方法。这里比较重要的是调用了ASRangeController的`configureContentView:forCellNode:`方法，它将Node的内容的渲染到contentView上。代理方法代码：
+ASTableView自己实现了`cellForRowAtIndexPath:`方法。这里比较重要的是调用了ASRangeController的`configureContentView:forCellNode:`方法，它将Node的所带View作为子View加入到contentView中用于显示。代理方法代码：
 ``` Objective-C
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
@@ -428,6 +431,48 @@ _ASPendingState是尚未创建的 View 的代理。一旦 View 被创建，那�
   } else {
     [_layer insertSublayer:subnode.layer atIndex:(unsigned int)idx];
   }
+}
+```
+通过以上步骤，我们大致了解Cell的ContentView被创建的过程。
+
+## 预加载  
+
+<center><img src="http://texturegroup.org/static/images/intelligent-preloading-ranges-with-names.png" width="28%" ></center>
+
+
+
+**ASRangeController**
+``` Objective-C
+- (void)_updateVisibleNodeIndexPaths
+{
+}
+```
+
+**ASDisplayNode**
+
+
+``` Objective-C
+- (void)_didEnterPreloadState
+{
+  ASDisplayNodeAssertMainThread();
+  DISABLED_ASAssertUnlocked(__instanceLock__);
+  [self didEnterPreloadState];
+  
+  // If this node has ASM enabled and is not yet visible, force a layout pass to apply its applicable pending layout, if any,
+  // so that its subnodes are inserted/deleted and start preloading right away.
+  //
+  // - If it has an up-to-date layout (and subnodes), calling -layoutIfNeeded will be fast.
+  //
+  // - If it doesn't have a calculated or pending layout that fits its current bounds, a measurement pass will occur
+  // (see -__layout and -_u_measureNodeWithBoundsIfNecessary:). This scenario is uncommon,
+  // and running a measurement pass here is a fine trade-off because preloading any time after this point would be late.
+  
+  if (self.automaticallyManagesSubnodes && !ASActivateExperimentalFeature(ASExperimentalDidEnterPreloadSkipASMLayout)) {
+    [self layoutIfNeeded];
+  }
+  [self enumerateInterfaceStateDelegates:^(id<ASInterfaceStateDelegate> del) {
+    [del didEnterPreloadState];
+  }];
 }
 ```
 
