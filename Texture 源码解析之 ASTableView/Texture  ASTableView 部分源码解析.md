@@ -1,10 +1,10 @@
 > 本文根据案例解析了Texture(AsyncDisplayKit)框架中的ASTableView。
 
 ## 前言
- [Texture](https://github.com/TextureGroup/Texture)(原为AsyncDisplayKit)框架为我们提供了确保用户体验平滑和快速响应的解决方案，让我们的APP可以在显示复杂内容情况下达到每秒60帧的刷新率。一直很好奇它是如何凭借异步渲染做到这一点的，于是想对其源码一探究竟。无奈源码如此浩瀚，短时间应该无法理解其精髓了😂。所以只能由浅入深，对平时用的较多的TableView先研究一番。
- 本文围绕着UITableView的继承者ASTableView进行展开。ASTableView通过大量骚操作(约2000行代码)，和神队友(相关类)一起，实现了UITableView与框架异步渲染机制的集成，达到了德芙般的丝滑。我们基于一个案例项目，从经典的UITableView使用步骤："计算Cell高度和创建可复用的Cell" 为切入点，来了解UITableView和框架的协同，为以后进一步深入打个基础。
+ [Texture](https://github.com/TextureGroup/Texture) (原为 AsyncDisplayKit )框架为我们提供了确保用户体验平滑和快速响应的解决方案，让 APP 可以在显示复杂内容情况下达到每秒60帧的刷新率。一直很好奇它是如何凭借异步渲染做到这一点的，于是想对其源码一探究竟。无奈源码如此浩瀚，短时间应该无法理解其精髓了😂。所以只能由浅入深，对平时用的较多的 TableView 先研究一番。
+ 本文围绕着 UITableView 的继承者 ASTableView 进行展开。我们基于一个案例项目，从经典的 UITableView 使用步骤："计算 Cell 高度和创建可复用的 Cell" 为切入点，来了解 UITableView 和框架的协同，为以后进一步深入打个基础。
 
-## 案例
+## 案例  
  本文基于Texture框架[2.8.1](https://github.com/TextureGroup/Texture/releases/tag/2.8.1)版本，随着时间某些代码可能会变化。演示项目为开源库中的一个例子：[SocialAppLayout](https://github.com/TextureGroup/Texture/tree/master/examples/SocialAppLayout) 。下载后，需用[Pods](https://cocoapods.org/)导入依赖库(同时也会导入Texture框架源码)。 运行界面如下，是一个很常规的列表：
 
 <center><img src="./ScreenShot.png" width="50%" style="border:1px solid lightGray;"></center>
@@ -436,7 +436,7 @@ _ASPendingState是尚未创建的 View 的代理。一旦 View 被创建，那�
 通过以上步骤，我们大致了解Cell的ContentView被创建的过程。
 
 ## 预加载  
-
+除了异步和并发渲染，智能预加载也是一个关键概念。
 <center><img src="http://texturegroup.org/static/images/intelligent-preloading-ranges-with-names.png" width="30%" ></center>
 
 
