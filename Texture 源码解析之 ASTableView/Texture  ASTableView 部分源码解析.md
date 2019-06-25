@@ -25,7 +25,10 @@ Texture框架比较大，这里只列出和ASTableView相关的几个关键类�
 
 实际上类之间调用非常复杂，上图只是精简出了一部分，用于大体理解。从上图看出，ASTableView被ASTableNode持有的同时，也作为ViewController的view。多个ASCellNode被缓存于ASDataController中，单个ASCellNode与_ASTableViewCell一对一绑定。
 
-## 计算Cell高度  
+## 一个最好提前知道的缺陷？  
+ 目前版本，**Cell不支持复用**。这里是指 `ASCellNode` 不被复用。如果200行数据，就会创建200个 ASCellNode 对象。当然对应的 `UITableViewCell` 依然基于 `UITableView` 而被复用。但过多的 ASCellNode 依然会引起内存问题。在上面案例中，500行数据时整个APP耗用内存大于90MB，5000行数据时，耗用达500MB。所以这个问题值得注意。框架开发者不支持 Cell 复用的理由是可以避免大量由复用引起的Bug，所以这点算不算缺陷大家见仁见智吧。框架开发者建议大数据时，采用分批获取的策略，而不是一次性加载。可参考 [Batch Fetching API](http://texturegroup.org/docs/batch-fetching-api.html)。
+
+## 计算 Cell 高度  
  对于展示动态内容的TableView，比如朋友圈，由于内容长短不一，我们第一个遇到的问题往往是计算Cell的高度。ASTableView采用的方案的是，让Cell在子线程中根据数据自计算布局，得到高度，然后在主线程使用。计算好的布局信息会随ASCellNode缓存在`ASDataController`，以便复用。
 
 ### 触发布局计算
@@ -436,7 +439,7 @@ _ASPendingState是尚未创建的 View 的代理。一旦 View 被创建，那�
 通过以上步骤，我们大致了解Cell的ContentView被创建的过程。
 
 ## 预加载  
-除了异步和并发渲染，智能预加载也是一个关键概念。
+除了异步并发渲染，智能预加载也是一个关键概念。
 <center><img src="http://texturegroup.org/static/images/intelligent-preloading-ranges-with-names.png" width="30%" ></center>
 
 
