@@ -34,7 +34,8 @@ Texture框架比较大，这里只列出和ASTableView相关的几个关键类�
 ### 触发布局计算
  要得到正确的Cell高度，就得先计算Cell布局。不论是ASTableView自布局，还是调用了其`reloadData`方法，都会触发布局计算。计算从`endUpdatesAnimated`方法开始，在主线程调用。调用栈：
 
-![](endUpdates2.png)
+<center><img src="./endUpdates2.png"></center>
+
 
 注意此时并不会触发**UI**TableView的`reloadData`方法，而是等到子线程完成计算后，再执行真正的reloadData。所以，如果子线程计算过久，界面便会出现一段时间的空白。  
 
@@ -118,7 +119,7 @@ Node自己的布局方法主要由基类`ASDisplayNode`实现。如果之前计�
 ```
 
 最后`PostNode`这个开发者自定义的`ASDisplayNode`子类，会构建一个布局说明`ASLayoutSpec`，告诉父类具体的布局内容和方式。这一块也是使用此SDK开发者的工作。调用栈：
-![](postNode.png)
+<center><img src="./postNode.png"></center>
 
 关于布局如何自定义，请参考`[PostNode layoutSpecThatFits:]`方法。它的结构大体如下图：
 <center><img src="./cellLayout.png" width="50%" ></center>
@@ -439,44 +440,125 @@ _ASPendingState是尚未创建的 View 的代理。一旦 View 被创建，那�
 通过以上步骤，我们大致了解Cell的ContentView被创建的过程。
 
 ## 预加载  
-除了异步并发渲染，智能预加载也是一个关键概念。
+ 除了异步并发渲染，智能预加载也是一个关键概念。这里的预加载并不是页面快滚动到某处时，创建相应Node准备显示。由于 ASCellNode 并不复用，所以对ASTableView来说，ASCellNode 已经全部创建好了。这里预加载主要是监视 Node 的界面状态（Interface State）变化，做一定的获取数据、文本光栅化、图片解码等工作。官方文档对界面状态的描述如下图：
+
+
 <center><img src="http://texturegroup.org/static/images/intelligent-preloading-ranges-with-names.png" width="30%" ></center>
 
 
+在代码中，定义了字符型枚举`ASInterfaceState`来表示：
+``` Objective-C
+typedef NS_OPTIONS(unsigned char, ASInterfaceState)
+{
+    /** The element is not predicted to be onscreen soon and preloading should not be performed */
+    ASInterfaceStateNone          = 0,
+    /** The element may be added to a view soon that could become visible.  Measure the layout, including size calculation. */
+    ASInterfaceStateMeasureLayout = 1 << 0,
+    /** The element is likely enough to come onscreen that disk and/or network data required for display should be fetched. */
+    ASInterfaceStatePreload       = 1 << 1,
+    /** The element is very likely to become visible, and concurrent rendering should be executed for any -setNeedsDisplay. */
+    ASInterfaceStateDisplay       = 1 << 2,
+    /** The element is physically onscreen by at least 1 pixel.
+     In practice, all other bit fields should also be set when this flag is set. */
+    ASInterfaceStateVisible       = 1 << 3,
+    
+    //......
+};
+```
+这里采用位或运算来记录状态变化，比如状态由 Preload 变为 Display 时，便会执行 `ASInterfaceStatePreload | ASInterfaceStateDisplay`运算，得到值为‘\x07’ (0111)。所以'\x03'代表 Preload；'\x07'代表 Display，也包含 Proload；'\x0f'代表 Visible，也包含前面所有状态。为什么要这样做？ 因为在 ASDisplayNode 类中可以根据最大状态值把前面几个小状态应做的事都做了。比如 Visible 时，如果 Preload 和 Display 对应的事没有做，那么会把它俩的事一并做了。代码：
+
+**ASDisplayNode**
+先检测 Preload 状态，如果为旧状态未包含 Proload，则执行 Proload 相关处理。同理，Display 和 Visible 也一样。
+``` Objective-C
+- (void)applyPendingInterfaceState:(ASInterfaceState)newPendingState
+{
+  //......
+
+  // Entered or exited data loading state.
+  BOOL nowPreload = ASInterfaceStateIncludesPreload(newState);
+  BOOL wasPreload = ASInterfaceStateIncludesPreload(oldState);
+  
+  if (nowPreload != wasPreload) {
+    //......
+  }
+  
+  // Entered or exited contents rendering state.
+  BOOL nowDisplay = ASInterfaceStateIncludesDisplay(newState);
+  BOOL wasDisplay = ASInterfaceStateIncludesDisplay(oldState);
+
+  if (nowDisplay != wasDisplay) {
+    //......
+  }
+
+  // Became visible or invisible.  When range-managed, this represents literal visibility - at least one pixel
+  // is onscreen.  If not range-managed, we can't guarantee more than the node being present in an onscreen window.
+  BOOL nowVisible = ASInterfaceStateIncludesVisible(newState);
+  BOOL wasVisible = ASInterfaceStateIncludesVisible(oldState);
+
+  if (nowVisible != wasVisible) {
+    if (nowVisible) {
+      [self _didEnterVisibleState];
+    } else {
+      [self _didExitVisibleState];
+    }
+  }
+
+  //......
+}
+```
+
+### 预加载的触发
+ 预加载由 UITableView 和 ASCollectionView 的`layoutSubviews`方法触发。页面滚动时会触发`layoutSubviews`的调用，在该方法中，会调用 ASRangeController 的`updateIfNeeded`方法，ASRangeController 便获得机会计算哪些 Cell Node 需要更新 Interface State。调用栈：
+<center><img src="./preload.png"></center>
 
 **ASRangeController**
+ASRangeController 计算处于 Visible 的 Node, 并根据 Scroll Direction 计算新 Display 和 Preload 的 Node。然后更新 Node 状态。主要由`_updateVisibleNodeIndexPaths`方法做这些计算，这是个很长的方法，具体请查看实际代码。
 ``` Objective-C
 - (void)_updateVisibleNodeIndexPaths
 {
+  //...... 大象鼻子那么长
 }
 ```
 
 **ASDisplayNode**
-
+然后会调用 ASDisplayNode 的`recursivelySetInterfaceState:`方法，以递归的方式将新 Interface State 设置到子 Node。
 
 ``` Objective-C
-- (void)_didEnterPreloadState
+- (void)recursivelySetInterfaceState:(ASInterfaceState)newInterfaceState
 {
-  ASDisplayNodeAssertMainThread();
-  DISABLED_ASAssertUnlocked(__instanceLock__);
-  [self didEnterPreloadState];
-  
-  // If this node has ASM enabled and is not yet visible, force a layout pass to apply its applicable pending layout, if any,
-  // so that its subnodes are inserted/deleted and start preloading right away.
-  //
-  // - If it has an up-to-date layout (and subnodes), calling -layoutIfNeeded will be fast.
-  //
-  // - If it doesn't have a calculated or pending layout that fits its current bounds, a measurement pass will occur
-  // (see -__layout and -_u_measureNodeWithBoundsIfNecessary:). This scenario is uncommon,
-  // and running a measurement pass here is a fine trade-off because preloading any time after this point would be late.
-  
-  if (self.automaticallyManagesSubnodes && !ASActivateExperimentalFeature(ASExperimentalDidEnterPreloadSkipASMLayout)) {
-    [self layoutIfNeeded];
-  }
-  [self enumerateInterfaceStateDelegates:^(id<ASInterfaceStateDelegate> del) {
-    [del didEnterPreloadState];
-  }];
+  as_activity_create_for_scope("Recursively set interface state");
+
+  // Instead of each node in the recursion assuming it needs to schedule itself for display,
+  // setInterfaceState: skips this when handling range-managed nodes (our whole subtree has this set).
+  // If our range manager intends for us to be displayed right now, and didn't before, get started!
+  BOOL shouldScheduleDisplay = [self supportsRangeManagedInterfaceState] && [self shouldScheduleDisplayWithNewInterfaceState:newInterfaceState];
+  ASDisplayNodePerformBlockOnEveryNode(nil, self, YES, ^(ASDisplayNode *node) {
+    node.interfaceState = newInterfaceState;
+  });
+
+  //......
 }
 ```
+
+``` Objective-C
+void ASDisplayNodePerformBlockOnEveryNode(CALayer * _Nullable layer, ASDisplayNode * _Nullable node, BOOL traverseSublayers, void(^block)(ASDisplayNode *node))
+{
+  //......
+  
+  if (traverseSublayers && layer && node.rasterizesSubtree == NO) {
+    /// NOTE: The docs say `sublayers` returns a copy, but it does not.
+    /// See: http://stackoverflow.com/questions/14854480/collection-calayerarray-0x1ed8faa0-was-mutated-while-being-enumerated
+    for (CALayer *sublayer in [[layer sublayers] copy]) {
+      ASDisplayNodePerformBlockOnEveryNode(sublayer, nil, traverseSublayers, block);
+    }
+  } else if (node) {
+    for (ASDisplayNode *subnode in [node subnodes]) {
+      ASDisplayNodePerformBlockOnEveryNode(nil, subnode, traverseSublayers, block);
+    }
+  }
+}
+```
+最终，ASCellNode 包含的 ASImageNode、ASTextNode 等会根据状态执行自己的操作。
+
 
 ## 小结  
