@@ -1,3 +1,6 @@
+<img src="http://texturegroup.org/static/images/logo.svg">
+<br><br>
+
 > 本文基于一个演示项目，解析了 Texture(AsyncDisplayKit) 框架中的 ASTableView 的相关类，以及它们之间的协同。从 Cell 的高度计算和展现两条线路，来探索此框架实现 TableView 异步渲染的过程。
 
 ## 前言
@@ -7,13 +10,13 @@
 ## 案例  
  本文基于Texture框架 [2.8.1](https://github.com/TextureGroup/Texture/releases/tag/2.8.1) 版本，随着时间某些代码可能会变化。演示项目为开源库中的一个例子：[SocialAppLayout](https://github.com/TextureGroup/Texture/tree/master/examples/SocialAppLayout) 。下载后，需用 [Pods](https://cocoapods.org/) 导入依赖库(同时也会导入 Texture 框架源码)。 运行界面如下，是一个很常规的列表：
 
-<center><img src="./ScreenShot.png" width="50%" style="border:1px solid lightGray;"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/ScreenShot.jpg?raw=true" width="50%" style="border:1px solid lightGray;" alt="演示项目截图"></center>
 
 （本文并不介绍ASTableView的具体使用，如需要，看此演示项目也可。）
 
 ## 主要相关类  
  Texture 框架比较大，这里只列出和 ASTableView 相关的几个关键类，多了反而看花眼。它们之间大致的持有关系如下图：
-<center><img src="./class.png" width="95%"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/class.png?raw=true" width="95%" alt="主要相关类"></center>
 
 - `ASViewController : UIViewController`。是一个 UIViewController，持有`ASDisplayNode`的，用于支持异步渲染。
 - `ASTableNode : ASDisplayNode` 。用于渲染 TableView 的 Node, 它持有一个`ASTableView`对象。
@@ -34,20 +37,20 @@
 ### 触发布局计算
  要得到正确的 Cell 高度，就得先计算 Cell 布局。不论是 ASTableView 自布局，还是调用了其`reloadData`方法，都会触发布局计算。计算从`endUpdatesAnimated`方法开始，在主线程调用。调用栈：
 
-<center><img src="./endUpdates2.png"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/endUpdates2.png?raw=true" alt="触发布局调用栈"></center>
 
 
  注意此时并不会触发**UI**TableView的`reloadData`方法，而是等到子线程完成计算后，再执行真正的reloadData。所以，如果子线程计算过久，界面便会出现一段时间的空白。  
 
  调起布局计算的过程如下图：
-<center><img src="./callingStack.png" width="90%" ></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/callingStack.png?raw=true" width="90%" alt="调用过程"></center>
 
 <br>
 
 对应的精简代码如下：  
 **ASTableView**  
  ASTableView 调用 ASDataController 的`updateWithChangeSet`方法更新 change set：
-``` Objective-C
+``` ObjC
 - (void)endUpdatesAnimated:(BOOL)animated completion:(void (^)(BOOL completed))completion
 {
     //...... 代表此处省略多行代码，以便观察关键代码。下同。
@@ -62,7 +65,7 @@
 
 **ASDataController**  
  ASDataController会创建一个 GCD Group，在串行队列中为多个 ASCollectionElement 分配Node：
-``` Objective-C
+``` ObjC
 - (void)updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet
 {
     //......
@@ -74,7 +77,7 @@
 }
 ```
  在`_allocateNodesFromElements`方法中，会通过Block请求到一个 ASCellNode，在此例子中，即`PostNode`。 该Block是通过 ViewController 中的代理方法`nodeBlockForRowAtIndexPath`返回所得。接着对 Node 进行布局：
-``` Objective-C
+``` ObjC
 
 - (void)_allocateNodesFromElements:(NSArray<ASCollectionElement *> *)elements
 {
@@ -87,7 +90,7 @@
 }
 ```
  最终会触发 Node 自己的布局方法：
-```Objective-C
+```ObjC
 - (void)_layoutNode:(ASCellNode *)node withConstrainedSize:(ASSizeRange)constrainedSize
 {
   //......
@@ -99,7 +102,7 @@
 
 **ASDisplayNode** (ASDisplayNode+Layout.mm)
  Node 自己的布局方法主要由基类`ASDisplayNode`实现。如果之前计算好的或即将显示（pending display）的布局依然可用，则直接返回。否则创建一个即将显示的布局：
-```Objective-C
+```ObjC
 - (ASLayout *)layoutThatFits:(ASSizeRange)constrainedSize parentSize:(CGSize)parentSize
 {
     //......
@@ -119,17 +122,17 @@
 ```
 
  最后`PostNode`这个开发者自定义的`ASDisplayNode`子类，会构建一个布局说明`ASLayoutSpec`，告诉父类具体的布局内容和方式。这一块也是使用此SDK的开发者的工作。调用栈：
-<center><img src="./postNode.png"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/postNode.png?raw=true" alt="获取Spec调用栈"></center>
 
  关于布局如何自定义，请参考`[PostNode layoutSpecThatFits:]`方法。它定义的 Cell 结构大体如下图：
-<center><img src="./cellLayout.png" width="50%" ></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/cellLayout.png?raw=true" width="50%" alt="Cell自定义布局"></center>
 
  红框代表ASInsetLayoutSpec，它对它唯一的子元素实施了inset(类似padding)效果。篮框代表这个子元素，是一个水平方向的ASStackLayoutSpec，分左右两部分：左边头像，右边人名、内容等信息。右边也是一个垂直方向的ASStackLayoutSpec，而人名和点赞那两行又是水平方向的ASStackLayoutSpec。
 
 ### 布局计算
 **ASDisplayNode** (ASDisplayNode+LayoutSpec.mm)  
  取得自定义的布局说明`ASLayoutSpec`后，在`ASDisplayNode (ASLayoutSpec)`分类方法`calculateLayoutLayoutSpec`中，调用`ASLayoutElement`协议规定的方法进行布局计算：
-``` Objective-C
+``` ObjC
 - (ASLayout *)calculateLayoutLayoutSpec:(ASSizeRange)constrainedSize
 {
   //......
@@ -151,7 +154,7 @@
 
 **ASInsetLayoutSpec**  
  ASLayoutSpec 中实现的 ASLayoutElement 协议方法会被调用。而 ASLayoutSpec 的子类会覆盖 ASLayoutElement 协议方法，由此实现特定行为。在此例子中，PostNode 最终返回的是`ASInsetLayoutSpec`, 因此会触发 insets 的计算：
-``` Objective-C
+``` ObjC
 /**
  Inset will compute a new constrained size for it's child after applying insets and re-positioning
  the child to respect the inset.
@@ -174,7 +177,7 @@
 
 **ASStackLayoutSpec**
  由于上面A SInsetLayoutSpec 包含了一个`ASStackLayoutSpec`，所以调用 Child 布局触发了ASStackLayoutSpec 的布局计算。ASStackLayoutSpec 自己实现了协议方法`calculateLayoutThatFits:`，由该方法执行它自己的布局计算。这里比较重要的是` ASStackUnpositionedLayout::compute`方法，**CSS Flexible Box**布局的计算便由它完成。由于 CSS 计算过程比较复杂，这里不再展开，有兴趣的同学可以从以下代码追踪查看。
-``` Objective-C
+``` ObjC
 - (ASLayout *)calculateLayoutThatFits:(ASSizeRange)constrainedSize
 {
   //......
@@ -189,7 +192,7 @@
 }
 ```
  如果 ASStackLayoutSpec 还存在多个子元素 ASLayoutElement，那么会按递归的方式计算它们的布局。最后对于一个 Cell 来说，会得到一个包含Size的布局：
-<center><img src="./layoutResult.png" style="border:1px solid lightGray;"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/layoutResult.png?raw=true" style="border:1px solid lightGray;" alt="布局计算结果"></center>
  这个 Size 会赋值给 ASCellNode.frame, 而 ASCellNode 被 ASDataController 持有，这样便达到了缓存 Cell 高度的目的。  
 
  以上只出现了2种 Layout Specs，更多请参考 [Layout Specs](http://texturegroup.org/docs/layout2-layoutspec-types.html)。
@@ -197,12 +200,12 @@
 
 ### UI层获得Cell高度
  ASDataController 完成布局计算后，通过 ASRangeController 通知 ASTableView 刷新界面。它们之间的代理关系如下：
-<center><img src="./informTableView.png" width="30%"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/informTableView.png?raw=true" width="30%" alt="通知TableView"></center>
 
 
 **ASDataController**
  完成布局计算后，在主线程，通知 ASRangeController：
-``` Objective-C
+``` ObjC
 - (void)updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet
 {
   //......
@@ -225,7 +228,7 @@
 
 **ASRangeController**
  通知 ASTableView：
-``` Objective-C
+``` ObjC
 #pragma mark - ASDataControllerDelegete
 
 - (void)dataController:(ASDataController *)dataController updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet updates:(dispatch_block_t)updates
@@ -241,7 +244,7 @@
 
 **ASTableView**
  得到通知，刷新界面。在以下代码中，`[super reloadData];`即调用其父类UITableView重载数据：
-``` Objective-C
+``` ObjC
 #pragma mark - ASRangeControllerDelegate
 
 - (void)rangeController:(ASRangeController *)rangeController updateWithChangeSet:(_ASHierarchyChangeSet *)changeSet updates:(dispatch_block_t)updates
@@ -270,7 +273,7 @@
 
 
  UITableView 的代理方法被调用，从 ASDataController 中取得 Node 并返回高度：
-``` Objective-C
+``` ObjC
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
   CGFloat height = 0.0;
@@ -293,7 +296,7 @@
   
 **ASTableView**
  ASTableView 自己实现了`cellForRowAtIndexPath:`方法。这里比较重要的是调用了ASRangeController的`configureContentView:forCellNode:`方法，它将 Node 的所带 View 作为子 View 加入到 contentView 中用于显示。代理方法代码：
-``` Objective-C
+``` ObjC
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
   _ASTableViewCell *cell = [self dequeueReusableCellWithIdentifier:kCellReuseIdentifier forIndexPath:indexPath];
@@ -312,7 +315,7 @@
 
 **_ASTableViewCell**
  上面`cell.element = element;`这这一句，会将 Node 带的View属性（通常我们在自定义Cell时做了这些设置）设置到 Cell，比如 Cell 背景色。代码：
-``` Objective-C
+``` ObjC
 - (void)setElement:(ASCollectionElement *)element
 {
   _element = element;
@@ -337,7 +340,7 @@
 
 **ASRangeController**
  如果当前 Node 的 View 就是 ContentView，则会跳过设置。否则当前 Node 的 View 就设置为 ContentView：
-``` Objective-C
+``` ObjC
 - (void)configureContentView:(UIView *)contentView forCellNode:(ASCellNode *)node
 {
   //......
@@ -357,7 +360,7 @@
 
 **ASDisplayNode**
  如果当前 Node 的 View 是第一次被使用，那么以上`node.view.superview`语句将触发 View 的创建过程：
-``` Objective-C
+``` ObjC
 - (UIView *)view
 {
   //......
@@ -390,7 +393,7 @@
 ```
 
 `_locked_applyPendingStateToViewOrLayer`方法会将状态应用到 View 或者 Layer 上, 比如 frame、clipsToBounds、hidden 等很多属性：
-``` Objective-C
+``` ObjC
 - (void)_locked_applyPendingViewState
 {
   //......
@@ -411,7 +414,7 @@
 
 **ASDisplayNode+UIViewBridge**  
  那么上面的 _ASPendingState 状态从哪里来？ 一部分是在布局计算中，需要设置 View 状态时，都会设置在_ASPendingState中。在`ASDisplayNode+UIViewBridge.mm`类中有大量这样的操作，比如：
-``` Objective-C
+``` ObjC
 - (void)setBounds:(CGRect)newBounds
 {
   _bridge_prologue_write;
@@ -423,7 +426,7 @@
 
 **ASDisplayNode**
  对于 Sub View, `ASDisplayNode`会将上面的步骤以递归的方式创建：
-``` Objective-C
+``` ObjC
 - (void)_insertSubnodeSubviewOrSublayer:(ASDisplayNode *)subnode atIndex:(NSInteger)idx
 {
   //......
@@ -447,7 +450,7 @@
 
 
 在代码中，用定义了字符型枚举`ASInterfaceState`来表示状态：
-``` Objective-C
+``` ObjC
 typedef NS_OPTIONS(unsigned char, ASInterfaceState)
 {
     /** The element is not predicted to be onscreen soon and preloading should not be performed */
@@ -469,7 +472,7 @@ typedef NS_OPTIONS(unsigned char, ASInterfaceState)
 
 **ASDisplayNode**
  先检测 Preload 状态，如果为旧状态未包含 Proload，则执行 Proload 相关处理。同理，Display 和 Visible 也一样。
-``` Objective-C
+``` ObjC
 - (void)applyPendingInterfaceState:(ASInterfaceState)newPendingState
 {
   //......
@@ -509,11 +512,11 @@ typedef NS_OPTIONS(unsigned char, ASInterfaceState)
 
 ### 预加载的触发
  预加载由 UITableView 和 ASCollectionView 的`layoutSubviews`方法触发。页面滚动时会触发`layoutSubviews`的调用，在该方法中，会调用 ASRangeController 的`updateIfNeeded`方法，ASRangeController 便会计算哪些 Cell Node 需要更新 Interface State。调用栈：
-<center><img src="./preload.png"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/preload.png?raw=true" alt="预加载调用栈"></center>
 
 **ASRangeController**
  ASRangeController 计算处于 Visible 的 Node, 并根据 Scroll Direction 计算具备新 Display 和 Preload 状态的 Node。然后更新这些 Node 的状态。主要由`_updateVisibleNodeIndexPaths`方法做这些计算，这是个很长的方法，具体请查看实际代码。
-``` Objective-C
+``` ObjC
 - (void)_updateVisibleNodeIndexPaths
 {
   //...... 大象鼻子那么长
@@ -523,7 +526,7 @@ typedef NS_OPTIONS(unsigned char, ASInterfaceState)
 **ASDisplayNode**
  然后会调用 ASDisplayNode 的`recursivelySetInterfaceState:`方法，以递归的方式将新 Interface State 设置到子 Node。
 
-``` Objective-C
+``` ObjC
 - (void)recursivelySetInterfaceState:(ASInterfaceState)newInterfaceState
 {
   as_activity_create_for_scope("Recursively set interface state");
@@ -540,7 +543,7 @@ typedef NS_OPTIONS(unsigned char, ASInterfaceState)
 }
 ```
 
-``` Objective-C
+``` ObjC
 void ASDisplayNodePerformBlockOnEveryNode(CALayer * _Nullable layer, ASDisplayNode * _Nullable node, BOOL traverseSublayers, void(^block)(ASDisplayNode *node))
 {
   //......
@@ -562,6 +565,6 @@ void ASDisplayNodePerformBlockOnEveryNode(CALayer * _Nullable layer, ASDisplayNo
 
 
 ## 小结  
- 通过以上代码追踪，我们了解了围绕着 ASTableView 的相关类，以及它们之间如何协同来做到异步渲染。从 Cell 高度计算而触发的布局计算，到展现 Cell 时在主线程创建 Cell Content View，并将异步计算的布局结果等信息设置到 View 中。最后，还看了下预加载的相关机制。但这一遍走下来，离 Texture 框架的核心部分还是比较远，只能算是理了一波代码线索。希望后面有时间再继续深入。
+ 通过以上代码追踪，我们了解了围绕着 ASTableView 的相关类，以及它们之间如何协同来做到异步渲染。从 Cell 高度计算而触发的布局计算，到展现 Cell 时在主线程创建 Cell Content View，并将异步计算的布局结果等信息设置到 View 中。最后，还看了下预加载的相关机制。但这一遍走下来，理解的深度还是不够，只能算是理了一波代码线索。希望后面有时间再继续深入。
 
 > 转载请保留出处: https://blog.happyyun.com/ 非常感谢！
