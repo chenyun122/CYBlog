@@ -192,7 +192,7 @@
 }
 ```
  如果 ASStackLayoutSpec 还存在多个子元素 ASLayoutElement，那么会按递归的方式计算它们的布局。最后对于一个 Cell 来说，会得到一个包含Size的布局：
-<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/layoutResult.png?raw=true" style="border:1px solid lightGray;" alt="布局计算结果"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/layoutResult.jpg?raw=true" style="border:1px solid lightGray;" alt="布局计算结果"></center>
  这个 Size 会赋值给 ASCellNode.frame, 而 ASCellNode 被 ASDataController 持有，这样便达到了缓存 Cell 高度的目的。  
 
  以上只出现了2种 Layout Specs，更多请参考 [Layout Specs](http://texturegroup.org/docs/layout2-layoutspec-types.html)。
@@ -200,7 +200,7 @@
 
 ### UI层获得Cell高度
  ASDataController 完成布局计算后，通过 ASRangeController 通知 ASTableView 刷新界面。它们之间的代理关系如下：
-<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/informTableView.jpg?raw=true" width="30%" alt="通知TableView"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/informTableView.png?raw=true" width="30%" alt="通知TableView"></center>
 
 
 **ASDataController**
