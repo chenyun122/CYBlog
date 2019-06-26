@@ -200,7 +200,7 @@
 
 ### UI层获得Cell高度
  ASDataController 完成布局计算后，通过 ASRangeController 通知 ASTableView 刷新界面。它们之间的代理关系如下：
-<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/informTableView.png?raw=true" width="30%" alt="通知TableView"></center>
+<center><img src="https://github.com/chenyun122/CYBlog/blob/master/Texture%20%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B9%8B%20ASTableView/informTableView.jpg?raw=true" width="30%" alt="通知TableView"></center>
 
 
 **ASDataController**
